@@ -2181,6 +2181,7 @@ int main(int Argc, char **Argv) {
 		switch(tmpint) {
 			case '?':
 			default:
+				0;
 		}
 	}
 
