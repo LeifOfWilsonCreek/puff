@@ -1766,13 +1766,19 @@ int keyexit() {
 			doupdate();
 			redraw_statuswin("Save %s before exiting?  ", NAME);
 			tmpchar = 0;
-			if(kgetstr(statuswin, &tmpchar, 1, "ynYN") == ERR || !tmpchar) {
+			if(kgetstr(statuswin, &tmpchar, 1, "YyNnQq") == ERR || !tmpchar) {
 				redraw_statuswin("file");
 				tmpint = 0;
 				break;
 			}
-			if(tmpchar == 'y' || tmpchar == 'Y') {
+			if(tmpchar == 'Y' || tmpchar == 'y') {
 				if(keysave() == ERR) {
+					tmpint = 0;
+					break;
+				}
+			}
+			if(tmpchar == 'Q' || tmpchar == 'q') {
+				if(keyqsave() == ERR) {
 					tmpint = 0;
 					break;
 				}
