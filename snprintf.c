@@ -238,18 +238,18 @@ modifiers:
 		switch(type) {
 		case 'd':       /*   signed decimal int */
 		case 'i':       /*   signed decimal int */
-			if(base == -1)
+			if(base < 2)
 				base = 10;
 			is_signed = 1;
 			goto integer;
 
 		case 'o':       /* unsigned octal   int */
-			if(base == -1)
+			if(base < 2)
 				base = 8;
 			goto integer;
 
 		case 'u':       /* unsigned decimal int */
-			if(base == -1)
+			if(base < 2)
 				base = 10;
 			goto integer;
 
@@ -264,7 +264,7 @@ modifiers:
 			/* FALLTHROUGH */
 		case 'x':       /* unsigned hex     int */
 			alt_hex = alt;
-			if(base == -1)
+			if(base < 2)
 				base = 16;
 			goto integer;
 
@@ -416,7 +416,7 @@ modifiers:
 					sign = plus;
 				}
 
-				if(base == -1)
+				if(base < 2)
 					base = 10;
 
 				if(prec < 0)
