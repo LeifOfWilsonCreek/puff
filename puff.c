@@ -1541,22 +1541,6 @@ int keyseekbyte() {
 }
 
 static char lastsearch[MAX_COLS+1] = "";
-int keysearch() {
-	char tmpstr[MAX_COLS+1];
-	int tmpint;
-	off_t tmpoff;
-
-	if(curfile == -1) return ERR;
-	redraw_statuswin("Search for:  ");
-	strcpy(tmpstr, lastsearch);
-	if(kgetstr(statuswin, tmpstr, sizeof(tmpstr), "search") == ERR) {
-		redraw_statuswin("file");
-		return ERR;
-	}
-	if(*tmpstr) strcpy(lastsearch, tmpstr);
-	return keysearchnext();
-}
-
 int keysearchnext() {
 	int tmpint;
 	off_t tmpoff;
@@ -1577,6 +1561,19 @@ int keysearchnext() {
 	}
 	seekbyte(curfile, tmpoff, seek_centers);
 	return OK;
+}
+int keysearch() {
+	char tmpstr[sizeof(lastsearch)];
+
+	if(curfile == -1) return ERR;
+	redraw_statuswin("Search for:  ");
+	strcpy(tmpstr, lastsearch);
+	if(kgetstr(statuswin, tmpstr, sizeof(tmpstr), "search") == ERR) {
+		redraw_statuswin("file");
+		return ERR;
+	}
+	if(*tmpstr) strcpy(lastsearch, tmpstr);
+	return keysearchnext();
 }
 
 int keynew() {

@@ -28,12 +28,13 @@
 #define KSAVE 538
 #define KNEW 539
 #define KSEARCH 540
-#define KSPECIAL 541
-#define KFILEMENU 542
-#define KSUSPEND 543
-#define KKILL 544
-#define KKILLBOL 545
-#define KKILLEOL 546
+#define KSEARCHNEXT 541
+#define KSPECIAL 542
+#define KFILEMENU 543
+#define KSUSPEND 544
+#define KKILL 545
+#define KKILLBOL 546
+#define KKILLEOL 547
 
 #ifdef DEBUG
 #	define KDEBUG 550
