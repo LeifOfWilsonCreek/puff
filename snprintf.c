@@ -20,17 +20,22 @@ order:
       (translate: negative-width)
     - "^": All letters in the output should be upper-case (not POSIX)
 
- - Optional decimal digit string specifying the minimum field's width.  If the
+ - Optional decimal digit string specifying the field's minimum width.  If the
    total width of the field is less than this number, it is padded with spaces.
-   This never truncates a field.
+   Substituting '*' for the digit string causes an int argment to be read as the
+   width.  ('*' is not POSIX)  Specifying a width never causes a field to be
+   truncated.
 
  - Optional period followed by a decimal digit string specifying the field's
    precision.  The default and interpretation of the precision depends on the
    field type.  A period with no digit string specifies precision of zero.
+   Substituting '*' for the digit string causes an int argment to be read as the
+   precision.  ('*' is not POSIX)
 
  - Optional underline followed by a decimal digit string specifying a numeric
    field's base.  The base of any field type may be changed using this modifier.
-   (not POSIX)
+   Substituting '*' for the digit string causes an int argment to be read as the
+   base.  (this field is not POSIX)
 
  - One optional type modifier.  These may be used to modify the numeric type
    parameter or the numeric type pointed to by the parameter.
@@ -39,31 +44,32 @@ order:
     - "ll": The integer type is changed to a long long or unsigned long long
     - "q":  The integer type is changed to a quad_t or u_quad_t
     - "L":  The floating point type is changed to a long double
+   "ll" and "q" are not POSIX.
 
  - The field type indicator described below
-
-
- - "d" or "i":  Type is int, default base is 10, "#" is meaningless, precision
-   is the minimum number of digits.
- - "u":  Same as "i", but type is unsigned int.
- - "o":  Same as "u", but default base is 8, "#" means the first digit must be
-   zero.
- - "x":  Same as "u", but default base is 16, "#" means prefix with "0x".
- - "X":  Same as "x", but uses uppercase digits and "0X".
- - "p":  Type is (void *) and may not be overridden, the output format depends
-   on who you ask.
- - "s":  Type is (char *) and may not be overridden, "#" (not POSIX) means
-   convert to lowercase ("^" still means convert to uppercase - not POSIX),
-   precision (not POSIX) is the maximum number of characters to display.
-   Precision may be used for showing unterminated strings.
- - "n":  Type is (int *), "#" is meaningless, precision is meaningless.  Stores
-   the number of characters printed thus far at the location pointed to.
- - "c":  Type is int and may not be overridden, "#" is meaningless, precision
-   is meaningless.  The integer is converted to (unsigned char), then displayed.
- - "f":  Type is double, default base is 10, "#" means a period shows even if
-   precision is zero, precision is the number of digits after the period.
- - "%":  Takes no parameter, displays "%" in the same manner as "c" would.
- - "e", "E", "g", or "G":  Not implemented yet
+    - "d" or "i":  Type is int, default base is 10, "#" is meaningless,
+      precision is the minimum number of digits.
+    - "u":  Same as "i", but type is unsigned int.
+    - "o":  Same as "u", but default base is 8, "#" means the first digit must
+      be zero.
+    - "x":  Same as "u", but default base is 16, "#" means prefix with "0x".
+    - "X":  Same as "x", but uses uppercase digits and "0X".
+    - "p":  Type is (void *) and may not be overridden, the output format
+      depends on who you ask.
+    - "s":  Type is (char *) and may not be overridden, "#" (not POSIX) means
+      convert to lowercase ("^" still means convert to uppercase - not POSIX),
+      precision (not POSIX) is the maximum number of characters to display.
+      Precision may be used for showing unterminated strings.
+    - "n":  Type is (int *), "#" is meaningless, precision is meaningless.
+      Stores the number of characters printed thus far at the location pointed
+      to.
+    - "c":  Type is int and may not be overridden, "#" is meaningless, precision
+      is meaningless.  The integer is converted to (unsigned char), then
+      displayed.
+    - "f":  Type is double, default base is 10, "#" means a period shows even if
+      precision is zero, precision is the number of digits after the period.
+    - "%":  Takes no parameter, displays "%" in the same manner as "c" would.
+    - "e", "E", "g", or "G":  Not implemented yet
 
 
 BUGS:
@@ -73,14 +79,15 @@ zero produces "", and precision has undefined meaning.  BSD says width never
 truncates a field, and precision is the minimum number of digits to appear,
 padding with zeros if necessary.  Printing zero with width zero therefore
 produces "0" and printing zero with /precision/ zero produces "".  I did it
-the BSD way because I don't think anyone implements the other way.
+the BSD way because it's more regular and I don't think anyone implements
+the other way.
 
  - Regarding s:
 If my documentation is correct, POSIX states that the width of a string is
 the maximum number of characters and precision has undefined meaning.  BSD
-says width never truncates a field, so the width of a string is the
-/minimum/ number of characters, while the /precision/ is the maximum.  I
-did it the BSD way because I don't think anyone implements the other way.
+says width never truncates a field, so the width of a string is the /minimum/
+number of characters, while the /precision/ is the maximum.  I did it the BSD
+way because it's more regular and I don't think anyone implements the other way.
 
 #endif
 
@@ -103,7 +110,7 @@ did it the BSD way because I don't think anyone implements the other way.
 #endif
 
 #define addch(ch) {if(index < size) str[index++] = (ch); else index++;}
-#define endstr() {if(index < size) str[index] = 0; else if(size) str[size-1] = 0;}
+#define endstr() {if(index < size) str[index] = 0; else if(size) str[size - 1] = 0;}
 
 int vsnprintf(char *str, size_t size, const char *format, va_list args) {
 	size_t index = 0;
@@ -164,6 +171,12 @@ flags:
 			width = 0;
 			while(*format >= '0' && *format <= '9')
 				width = width * 10 + *format++ - '0';
+		} else if(*format == '*') {
+			width = va_arg(args, int);
+			if(width < 0) {
+				width = -width;
+				ljust = 1;
+			}
 		}
 
 		/* precision */
@@ -171,6 +184,8 @@ flags:
 			prec = 0;
 			while(*++format >= '0' && *format <= '9')
 				prec = prec * 10 + *format - '0';
+		} else if(*format == '*') {
+			prec = va_arg(args, int);
 		}
 
 		/* base */
@@ -178,6 +193,10 @@ flags:
 			base = 0;
 			while(*++format >= '0' && *format <= '9')
 				base = base * 10 + *format - '0';
+		} else if(*format == '*') {
+			base = va_arg(args, int);
+			if(base < 0)
+				base = -1;
 		}
 
 		/* conversion modifiers */
@@ -221,7 +240,7 @@ modifiers:
 		case 'p':       /* pointer */
 			type = 'x';
 			alt = 2;
-			if(prec == -1)
+			if(prec < 0)
 				prec = sizeof(void *) * 2;
 			/* FALLTHROUGH */
 		case 'X':       /* unsigned hex     int */
@@ -380,7 +399,7 @@ modifiers:
 				if(base == -1)
 					base = 10;
 
-				if(prec == -1)
+				if(prec < 0)
 					prec = 6;
 
 				if(input < base)
@@ -546,6 +565,7 @@ integer:
 				}
 			}
 			/* sign and alt_hex are done below because they come before zero-padding */
+// XXX: what about %#.0o
 
 			/* If there's a sign, it subtracts from width */
 			if(sign && width > 1)
