@@ -89,6 +89,9 @@ says width never truncates a field, so the width of a string is the /minimum/
 number of characters, while the /precision/ is the maximum.  I did it the BSD
 way because it's more regular and I don't think anyone implements the other way.
 
+// XXX: fix base < 2
+// XXX: what about %#.0o
+
 #endif
 
 
@@ -195,8 +198,6 @@ flags:
 				base = base * 10 + *format - '0';
 		} else if(*format == '*') {
 			base = va_arg(args, int);
-			if(base < 0)
-				base = -1;
 		}
 
 		/* conversion modifiers */
@@ -565,7 +566,6 @@ integer:
 				}
 			}
 			/* sign and alt_hex are done below because they come before zero-padding */
-// XXX: what about %#.0o
 
 			/* If there's a sign, it subtracts from width */
 			if(sign && width > 1)
