@@ -6,8 +6,11 @@ bugs:
 	One-line input buffers need to be scrollable
 	Doesn't pick up .changes when it's on a new file
 	Make pasting move the cursor down
+	puff hangs if you use set window_margin in puff.conf
 
 to-do:
+	ctrl T should accept +/- for an offset from the current position
+	Add feature to cut or copy a word
 	+20 cmd-line option to go to line 20
 	top/bottom of file/screen
 	next-word
