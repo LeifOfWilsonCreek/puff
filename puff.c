@@ -3,6 +3,7 @@ bugs:
 	ENODEV doesn't make sense on some systems
 	Resizing the screen can leave the current line out of sight
 	Cutting should "paste" into the clipboard so the window moves properly
+	Setting lock_files=0 in puff.conf makes puff hang
 
 to-do:
 	+20 cmd-line option to go to line 20
@@ -346,8 +347,8 @@ int openfile(int curfile, char *filename) {
 	}
 
 	FP = file_open(filename, O_RDWR|(lock_files?FILE_LOCK:0), 0);
-	if(!FP && errno == ENOLCK) {
-		/* Only happens if the system's filelocking is broken */
+	if(!FP && errno != EAGAIN) {
+		/* Only happens if the filesystem's locking is broken */
 		FP = file_open(filename, O_RDWR, 0);
 		if(FP) {
 			redraw_statuswin("Warning - Could not lock file: %s", strerror(errno));
@@ -357,7 +358,8 @@ int openfile(int curfile, char *filename) {
 	if(!FP) {
 		FP = file_open(filename, O_RDONLY|(lock_files?FILE_LOCK:0), 0);
 	}
-	if(!FP && errno == ENOLCK) {
+	if(!FP && errno != EAGAIN) {
+		/* Only happens if the filesystem's locking is broken */
 		FP = file_open(filename, O_RDONLY, 0);
 		if(FP) {
 			redraw_statuswin("Warning - Could not lock file: %s", strerror(errno));
@@ -1635,11 +1637,11 @@ int keysave() {
 	if(!curfile) {
 		/* Don't change the name of the clipboard */
 		if(file_saveas(FP, tmpstr, (lock_files?FILE_LOCK:0)|FILE_ALLOWOVERWRITE|FILE_KEEPOLD, S_IRUSR|S_IWUSR)) {
-			if(errno != ENOLCK) {
+			if(errno == EAGAIN) {
 				redraw_statuswin("%s", strerror(errno));
 				return ERR;
 			}
-			/* Only happens if the system's filelocking is broken */
+			/* Only happens if the filesystem's locking is broken */
 			if(file_saveas(FP, tmpstr, FILE_ALLOWOVERWRITE|FILE_KEEPOLD, S_IRUSR|S_IWUSR)) {
 				redraw_statuswin("%s", strerror(errno));
 				return ERR;
@@ -1649,11 +1651,11 @@ int keysave() {
 		}
 	} else {
 		if(file_saveas(FP, tmpstr, (lock_files?FILE_LOCK:0)|FILE_ALLOWOVERWRITE, FILE_MODE666)) {
-			if(errno != ENOLCK) {
+			if(errno == EAGAIN) {
 				redraw_statuswin("%s", strerror(errno));
 				return ERR;
 			}
-			/* Only happens if the system's filelocking is broken */
+			/* Only happens if the filesystem's locking is broken */
 			if(file_saveas(FP, tmpstr, FILE_ALLOWOVERWRITE, S_IRUSR|S_IWUSR)) {
 				redraw_statuswin("%s", strerror(errno));
 				return ERR;
@@ -1691,11 +1693,11 @@ int keyqsave() {
 
 	redraw_statuswin("Saving...");
 	if(file_saveas(FP, NAME, (lock_files?FILE_LOCK:0)|FILE_ALLOWOVERWRITE, FILE_MODE666)) {
-		if(errno != ENOLCK) {
+		if(errno == EAGAIN) {
 			redraw_statuswin("%s", strerror(errno));
 			return ERR;
 		}
-		/* Only happens if the system's filelocking is broken */
+		/* Only happens if the filesystem's locking is broken */
 		if(file_saveas(FP, NAME, FILE_ALLOWOVERWRITE, S_IRUSR|S_IWUSR)) {
 			redraw_statuswin("%s", strerror(errno));
 			return ERR;

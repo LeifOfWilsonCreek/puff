@@ -61,7 +61,7 @@ EDITFILE *file_open(char *filename, int flgs, mode_t mode) {
 	} else if((flgs&O_ACCMODE) == O_RDONLY) {
 		if((tmpfd = open(filename, O_RDONLY, mode)) == -1) return 0;
 	} else {
-		errno = ENODEV;
+		errno = EINVAL;  /* Write-only not allowed */
 		return 0;
 	}
 
@@ -71,10 +71,13 @@ EDITFILE *file_open(char *filename, int flgs, mode_t mode) {
 		return 0;
 	}
 
-	if((sb.st_mode&S_IFMT) != S_IFREG) {
-		/* They prob'ly tried to open a device or fifo */
+	if(!S_ISREG(sb.st_mode)) {
+		/* They prob'ly tried to open a directory or something. */
 		close(tmpfd);
-		errno = ENODEV;
+		if(S_ISDIR(sb.st_mode))
+			errno = EISDIR;
+		else
+			errno = EINVAL;
 		return 0;
 	}
 
@@ -278,9 +281,12 @@ int file_saveas(EDITFILE *file, char *new_filename, int flgs, mode_t mode) {
 		close(tmpfd);
 		return -1;
 	}
-	if((write_stat.st_mode&S_IFMT) != S_IFREG) {
+	if(!S_ISREG(write_stat.st_mode)) {
 		close(tmpfd);
-		errno = ENODEV;
+		if(S_ISDIR(write_stat.st_mode))
+			errno = EISDIR;
+		else
+			errno = EINVAL;
 		return 0;
 	}
 
@@ -725,7 +731,7 @@ off_t file_truncate(EDITFILE *file, off_t new_size) {
 	}
 
 	if(file->size < new_size || new_size < 0) {
-		errno = ENODEV;
+		errno = EINVAL;
 		return -1;
 	}
 
