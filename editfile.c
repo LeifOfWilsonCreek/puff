@@ -135,12 +135,12 @@ int file_save(EDITFILE *file) {
 		return -1;
 	}
 
-#if !defined __linux__ && !defined __sun__
 	if(!file->mods) {
+#if !defined __linux__ && !defined __sun__
 		futimes(file_fileno(file), NULL);
+#endif
 		return 0;
 	}
-#endif
 
 	/* Extend the end of the file to file->size to be sure there's enough free
 	 * space...it is still possable to run out of space when modifying a sparse
