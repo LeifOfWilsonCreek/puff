@@ -1,9 +1,9 @@
 /*
 bugs:
-	ENODEV doesn't make sense on some systems
 	Resizing the screen can leave the current line out of sight
 	Cutting should "paste" into the clipboard so the window moves properly
 	Setting lock_files=0 in puff.conf makes puff hang
+	One-line input buffers need to be scrollable
 
 to-do:
 	+20 cmd-line option to go to line 20
