@@ -410,7 +410,7 @@ flt:
 number:
 		{
 			int length, spaces, zeros;
-			char buf[64], sign, tmpch, hexspecial = 0;
+			char buf[64], sign, hexspecial = 0;
 			const char *charset;
 
 			if(capital)
