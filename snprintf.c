@@ -163,6 +163,9 @@ flags:
 				tmps = va_arg(args, char *);
 				if(!tmps) tmps = "(null)";
 
+				/* Width is the minimum number of characters.
+				 * Precision is the maximum. */
+
 				length = strlen(tmps);
 				if(width >= 0 && length > width) length = width;
 				spaces = prec - length;
@@ -174,7 +177,7 @@ flags:
 				while(length--)
 					addch(*tmps++);
 				if(ljust)
-					while(width > 0)
+					while(width-- > 0)
 						addch(' ');
 			}
 			break;
