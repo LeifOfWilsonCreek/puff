@@ -3,7 +3,6 @@
 // The e, E, g, and G types are unimplemented
 
 #include <ctype.h>
-#include <ieeefp.h>
 #include <math.h>
 #include <stdarg.h>
 #include <string.h>
