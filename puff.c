@@ -4,6 +4,8 @@ bugs:
 	Cutting should "paste" into the clipboard so the window moves properly
 	Setting lock_files=0 in puff.conf makes puff hang
 	One-line input buffers need to be scrollable
+	Doesn't pick up .changes when it's on a new file
+	Make pasting move the cursor down
 
 to-do:
 	+20 cmd-line option to go to line 20
