@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <math.h>
 #include <stdarg.h>
+#include <string.h>
 #include <sys/types.h>
 
 
@@ -136,9 +137,9 @@ flags:
 			addch('x');
 			if(width == -1 && prec == -1)
 				prec = sizeof(void *) * 2;
-			else if(width == 1)
+			else if(width == 2)
 				width--;
-			else if(width >= 2)
+			else if(width >= 3)
 				width =- 2;
 			/* FALLTHROUGH */
 		case 'X':       /* unsigned hex     int */
@@ -511,8 +512,8 @@ number:
 }
 
 int snprintf(char *str, size_t size, const char *format, ...) {
-	register va_list args;
-	register int ret;
+	va_list args;
+	int ret;
 
 	va_start(args, format);
 	ret = vsnprintf(str, size, format, args);
