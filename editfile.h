@@ -162,6 +162,7 @@ int file_findoff(EDITFILE *file, off_t offset);
  * Returns -1 on not-found, or the offset of the beginning of the matching
  * string.  If flags&FILE_NOCASE, use a case insensitive search. */
 #define FILE_NOCASE 1
+#define FILE_SMARTCASE 2
 off_t file_search(EDITFILE *file, void *thingy, size_t size, off_t begin, off_t end, int flags);
 
 /* Perform a regular expression search on the file...

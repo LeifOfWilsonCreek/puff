@@ -861,6 +861,20 @@ int file_findoff(EDITFILE *file, off_t offset) {
 	return line - 1;
 }
 
+#include <ctype.h>
+int smartstrncasecmp(const char *s1, const char *s2, size_t len) {
+	while(*s1 && len) {
+		int diff;
+		if(isupper(*s1))
+			diff = *s1 - *s2;  /* Uppercase letters in s1 match sensitively */
+		else
+			diff = *s1 - tolower(*s2);
+		if(diff) return diff;
+		s1++, s2++, len--;
+	}
+	return 0;
+}
+
 off_t file_search(EDITFILE *file, void *thingy, size_t size, off_t begin, off_t end, int flags) {
 	char *buf;
 	if(!end) end = file_size(file);
@@ -868,11 +882,19 @@ off_t file_search(EDITFILE *file, void *thingy, size_t size, off_t begin, off_t 
 	if(end < begin || !size) return -1;
 
 	buf = (char *)malloc(size);
-	if(flags&FILE_NOCASE) {
+	if(flags & FILE_NOCASE) {
 		if(file_read(file, begin, size, buf) < (signed)size) { free(buf); return -1; }
 		while(begin <= end) {
 			if(file_read(file, begin+size-1, 1, buf+size-1) < 1) { free(buf); return -1; }
 			if(!strncasecmp(thingy, buf, size)) { free(buf); return begin; }
+			begin++;
+			memmove(buf, buf+1, size-1);
+		}
+	} else if(flags & FILE_SMARTCASE) {
+		if(file_read(file, begin, size, buf) < (signed)size) { free(buf); return -1; }
+		while(begin <= end) {
+			if(file_read(file, begin+size-1, 1, buf+size-1) < 1) { free(buf); return -1; }
+			if(!smartstrncasecmp(thingy, buf, size)) { free(buf); return begin; }
 			begin++;
 			memmove(buf, buf+1, size-1);
 		}

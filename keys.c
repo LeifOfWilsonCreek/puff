@@ -106,7 +106,7 @@ int kgetstr(WINDOW *win, char *buf, size_t maxsize, char *validchars) {
 	getyx(win, cur_y, beginpos);
 
 	if(maxsize > max_x - beginpos) maxsize = max_x - beginpos;
-	if(!maxsize) return ERR;
+	if(maxsize <= 0) return ERR;
 	if(validchars && !strcasecmp(validchars, "file")) {
 		file = 1;
 		validchars = 0;
@@ -122,11 +122,15 @@ int kgetstr(WINDOW *win, char *buf, size_t maxsize, char *validchars) {
 		searchlen = strlen(lastsearch);
 		buf[0] = 0;
 	}
-	buf[maxsize - 1] = 0;		/* overflow protection */
-
-	wclrtoeol(win);
-	waddstr(win, buf);
-	end = position = strlen(buf);
+	if(maxsize == 1) {
+		wclrtoeol(win);
+		end = position = 0;
+	} else {
+		buf[maxsize - 1] = 0;		/* overflow protection */
+		wclrtoeol(win);
+		waddstr(win, buf);
+		end = position = strlen(buf);
+	}
 	while(1) {
 		wmove(win, cur_y, beginpos + position);
 		wrefresh(win);

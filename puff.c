@@ -16,7 +16,7 @@ to-do:
 	kill marked piece
 	copy line with reverse color flash
 	[key-file] section of config file for file menu
-	search-all-files, s & replace, regex search, case insensitive
+	search-all-files, s & replace, regex search
 	show mods in another color
 	cmd to pipe the marked text to a program such as lpr
 	auto-indent
@@ -1540,19 +1540,25 @@ int keyseekbyte() {
 	return OK;
 }
 
-static char lastsearch[MAX_COLS+1] = "";
+static struct search_params {
+	char sensitive;  /* 0 = insensitive, 1 = sensitive, 2 = sorta sensitive */
+	char text[MAX_COLS + 1];
+} old_search;
+
 int keysearchnext() {
 	int tmpint;
 	off_t tmpoff;
 
 	if(curfile == -1) return ERR;
 	redraw_statuswin("Searching...");
-	tmpint = strlen(lastsearch);
-	tmpoff = file_search(FP, lastsearch, tmpint, OFFSET+1, file_size(FP), 0);
+	tmpint = strlen(old_search.text);
+	tmpoff = file_search(FP, old_search.text, tmpint, OFFSET + 1, file_size(FP),
+		old_search.sensitive == 'S' ? FILE_SMARTCASE : old_search.sensitive == 'N' ? FILE_NOCASE : 0);
 	redraw_statuswin("file");
 	if(tmpoff == -1) {
 		redraw_statuswin("Search wrapped...");
-		tmpoff = file_search(FP, lastsearch, tmpint, 0, OFFSET + tmpint, 0);
+		tmpoff = file_search(FP, old_search.text, tmpint, 0, OFFSET + tmpint,
+			old_search.sensitive == 'S' ? FILE_SMARTCASE : old_search.sensitive == 'N' ? FILE_NOCASE : 0);
 		if(tmpoff != -1) redraw_statuswin("Search wrapped");
 	}
 	if(tmpoff == -1) {
@@ -1563,17 +1569,28 @@ int keysearchnext() {
 	return OK;
 }
 int keysearch() {
-	char tmpstr[sizeof(lastsearch)];
+	struct search_params new_search;
 
 	if(curfile == -1) return ERR;
+
+	/* Get string */
 	redraw_statuswin("Search for:  ");
-	strcpy(tmpstr, lastsearch);
-	if(kgetstr(statuswin, tmpstr, sizeof(tmpstr), "search") == ERR) {
-		redraw_statuswin("file");
-		return ERR;
-	}
-	if(*tmpstr) strcpy(lastsearch, tmpstr);
+	strcpy(new_search.text, old_search.text);
+	if(kgetstr(statuswin, new_search.text, sizeof(new_search.text), "search") == ERR) goto cancel;
+	if(! new_search.text[0]) return keysearchnext();
+
+	redraw_statuswin("Case sensitive (yes/no/Sorta)?  ");
+	new_search.sensitive = 'S';
+	if(kgetstr(statuswin, &new_search.sensitive, 1, "YyNnSs") == ERR) goto cancel;
+	new_search.sensitive = toupper(new_search.sensitive);
+
+	/* Run new search */
+	old_search = new_search;
 	return keysearchnext();
+
+cancel:
+	redraw_statuswin("file");
+	return ERR;
 }
 
 int keynew() {
@@ -1866,7 +1883,7 @@ int keyfilemenu() {
 	struct stat sb;
 	char permstr[32];
 
-	if(!(messagewin = newwin(LINES-1,COLS,0,0))) {
+	if(!(messagewin = newwin(LINES - 1, COLS, 0, 0))) {
 		redraw_statuswin("Couldn't make message window - shouldn't happen.");
 		return ERR;
 	}
