@@ -8,8 +8,6 @@
 #include "keys.h"
 #include "shared.h"
 
-WINDOW *filewin = NULL;
-
 /* the first int is the return value, the rest are what escape string will
  * match it.  Escape strings are ended with -1. */
 int keys[][], definedkeys = 0;
@@ -56,7 +54,7 @@ void tab_file(char *string, int maxsize) {
 	int filenamelen, found = 0;
 
 	if(maxsize > MAXPATHLEN) maxsize = MAXPATHLEN;
-	strcpy(tmpstr, string);
+	strlcpy(tmpstr, string, sizeof(tmpstr));
 	if((ptr = strrchr(tmpstr, '/'))) {
 		*ptr = 0;
 		dirname = tmpstr;
