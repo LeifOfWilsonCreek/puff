@@ -116,12 +116,18 @@ flags:
 			goto number;
 
 		case 'p':
-			alt = 1;
-			goto hex;
+			addch('0');
+			addch('x');
+			if(width == -1 && prec == -1)
+				prec = sizeof(void *) * 2;
+			else if(width == 1)
+				width--;
+			else if(width >= 2)
+				width =- 2;
+			/* FALLTHROUGH */
 		case 'X':       /* unsigned hex     int */
 			capital = 1;
 		case 'x':       /* unsigned hex     int */
-hex:
 			if(modifier == 'q') {
 				inputull = va_arg(args, unsigned long long);
 			} else {
