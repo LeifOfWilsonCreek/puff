@@ -1,7 +1,8 @@
 /* This must be compiled with the math library (-lm) for pow() and log() if
  * floating point support is compiled in */
 
-/*
+#if 0
+
 The format string is based on (and compatible with) POSIX's printf's format
 string.  Features which do not appear in POSIX are marked "not POSIX".  The
 format is defined as follows:
@@ -71,15 +72,17 @@ If my documentation is correct, POSIX states that printing zero with width
 zero produces "", and precision has undefined meaning.  BSD says width never
 truncates a field, and precision is the minimum number of digits to appear,
 padding with zeros if necessary.  Printing zero with width zero therefore
-produces "0" and printing zero with /precision/ zero produces "".
+produces "0" and printing zero with /precision/ zero produces "".  I did it
+the BSD way because I don't think anyone implements the other way.
 
  - Regarding s:
 If my documentation is correct, POSIX states that the width of a string is
 the maximum number of characters and precision has undefined meaning.  BSD
 says width never truncates a field, so the width of a string is the
-/minimum/ number of characters, while the /precision/ is the maximum.
+/minimum/ number of characters, while the /precision/ is the maximum.  I
+did it the BSD way because I don't think anyone implements the other way.
 
- */
+#endif
 
 
 
