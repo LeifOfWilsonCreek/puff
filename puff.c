@@ -1732,14 +1732,20 @@ int keyclose() {
 		return ERR;
 	}
 	if(finfo[curfile].modified) {
-		redraw_statuswin("Save file before closing?  ");
+		if(NAME[0])
+			redraw_statuswin("Save %s before closing (Yes/No/Quick)?  ", NAME);
+		else
+			redraw_statuswin("Save before closing (Yes/No)?  ");
 		tmpchr = 0;
-		if(kgetstr(statuswin, &tmpchr, 1, "ynYN") == ERR || !tmpchr) {
+		if(kgetstr(statuswin, &tmpchr, 1, "YyNnQq") == ERR || !tmpchr) {
 			redraw_statuswin("file");
 			return ERR;
 		}
 		if(tmpchr == 'y' || tmpchr == 'Y') {
 			if(keysave() == ERR) return ERR;
+		}
+		if(tmpchr == 'Q' || tmpchr == 'q') {
+			if(keyqsave() == ERR) return ERR;
 		}
 	}
 	file_close(FP);
@@ -1766,7 +1772,10 @@ int keyexit() {
 			redrawwin(WIN);
 			wnoutrefresh(WIN);
 			doupdate();
-			redraw_statuswin("Save %s before exiting?  ", NAME);
+			if(NAME[0])
+				redraw_statuswin("Save %s before exiting (Yes/No/Quick)?  ", NAME);
+			else
+				redraw_statuswin("Save before exiting (Yes/No)?  ", NAME);
 			tmpchar = 0;
 			if(kgetstr(statuswin, &tmpchar, 1, "YyNnQq") == ERR || !tmpchar) {
 				redraw_statuswin("file");
