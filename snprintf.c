@@ -1,4 +1,89 @@
-/* This must be compiled with the math library (-lm) for pow() and log() */
+/* This must be compiled with the math library (-lm) for pow() and log() if
+ * floating point support is compiled in */
+
+/*
+The format string is based on (and compatible with) POSIX's printf's format
+string.  Features which do not appear in POSIX are marked "not POSIX".  The
+format is defined as follows:
+
+Characters besides "%" are copied to the output.  "%" indicates a field, defined
+by the characters that follow it.  Those characters may be, in the following
+order:
+
+ - Zero or more of "#", "+", " ", "-", or "^".
+    - "#": Use the "alternate" format, which depends on the field type
+    - "+": A plus sign should be placed before signed numeric field types
+    - " ": A space should be placed before signed numeric field types
+      (plus overrides space)
+    - "-": Output should be left-justified in the field's width
+      (translate: negative-width)
+    - "^": All letters in the output should be upper-case (not POSIX)
+
+ - Optional decimal digit string specifying the minimum field's width.  If the
+   total width of the field is less than this number, it is padded with spaces.
+   This never truncates a field.
+
+ - Optional period followed by a decimal digit string specifying the field's
+   precision.  The default and interpretation of the precision depends on the
+   field type.  A period with no digit string specifies precision of zero.
+
+ - Optional underline followed by a decimal digit string specifying a numeric
+   field's base.  The base of any field type may be changed using this modifier.
+   (not POSIX)
+
+ - One optional type modifier.  These may be used to modify the numeric type
+   parameter or the numeric type pointed to by the parameter.
+    - "h":  The integer type is changed to a short int or unsigned short int
+    - "l":  The integer type is changed to a long int or unsigned long int
+    - "ll": The integer type is changed to a long long or unsigned long long
+    - "q":  The integer type is changed to a quad_t or u_quad_t
+    - "L":  The floating point type is changed to a long double
+
+ - The field type indicator described below
+
+
+ - "d" or "i":  Type is int, default base is 10, "#" is meaningless, precision
+   is the minimum number of digits.
+ - "u":  Same as "i", but type is unsigned int.
+ - "o":  Same as "u", but default base is 8, "#" means the first digit must be
+   zero.
+ - "x":  Same as "u", but default base is 16, "#" means prefix with "0x".
+ - "X":  Same as "x", but uses uppercase digits and "0X".
+ - "p":  Type is (void *) and may not be overridden, the output format depends
+   on who you ask.
+ - "s":  Type is (char *) and may not be overridden, "#" (not POSIX) means
+   convert to lowercase ("^" still means convert to uppercase - not POSIX),
+   precision (not POSIX) is the maximum number of characters to display.
+   Precision may be used for showing unterminated strings.
+ - "n":  Type is (int *), "#" is meaningless, precision is meaningless.  Stores
+   the number of characters printed thus far at the location pointed to.
+ - "c":  Type is int and may not be overridden, "#" is meaningless, precision
+   is meaningless.  The integer is converted to (unsigned char), then displayed.
+ - "f":  Type is double, default base is 10, "#" means a period shows even if
+   precision is zero, precision is the number of digits after the period.
+ - "%":  Takes no parameter, displays "%" in the same manner as "c" would.
+ - "e", "E", "g", or "G":  Not implemented yet
+
+
+BUGS:
+ - Regarding diouxX:
+If my documentation is correct, POSIX states that printing zero with width
+zero produces "", and precision has undefined meaning.  BSD says width never
+truncates a field, and precision is the minimum number of digits to appear,
+padding with zeros if necessary.  Printing zero with width zero therefore
+produces "0" and printing zero with /precision/ zero produces "".
+
+ - Regarding s:
+If my documentation is correct, POSIX states that the width of a string is
+the maximum number of characters and precision has undefined meaning.  BSD
+says width never truncates a field, so the width of a string is the
+/minimum/ number of characters, while the /precision/ is the maximum.
+
+ */
+
+
+
+
 
 // The e, E, g, and G types are unimplemented
 
@@ -95,25 +180,20 @@ flags:
 		/* conversion modifiers */
 modifiers:
 		switch(*format) {
-		case 'q':       /* Long long (quad_t) */
-			modifier = 'q';
-			format++;
-			goto modifiers;
 		case 'l':	/* Long */
-			if(modifier == 'l')
-				modifier = 'q';
-			else
-				modifier = 'l';
+			if(modifier == 'l') {
+				modifier = 'L';  /* Long long */
+				format++;
+				break;
+			}
+			modifier = *format;
 			format++;
 			goto modifiers;
+		case 'q':       /* quad_t */
 		case 'h':	/* Short */
-			modifier = 'h';
+		case 'L':       /* Long double */
+			modifier = *format;
 			format++;
-			goto modifiers;
-		case 'L':       /* Long (for double) */
-			modifier = 'l';
-			format++;
-			goto modifiers;
 		}
 
 		type = *format;
@@ -194,6 +274,8 @@ modifiers:
 
 		case 'n':
 			if(modifier == 'q') {
+				(*va_arg(args, quad_t *)) = index;
+			} else if(modifier == 'L') {
 				(*va_arg(args, long long *)) = index;
 			} else if(modifier == 'l') {
 				(*va_arg(args, long *)) = index;
@@ -202,6 +284,7 @@ modifiers:
 			} else {
 				(*va_arg(args, int *)) = index;
 			}
+			if(width > 0) while(width--) addch(' ');
 			continue;
 
 		case 'c':       /* unsigned char */
@@ -228,7 +311,7 @@ modifiers:
 				else
 					charset = "0123456789abcdefghijklmnopqrstuvwxyz";
 
-				if(modifier == 'l')
+				if(modifier == 'L')
 					input = va_arg(args, long double);
 				else
 					input = va_arg(args, double);
@@ -377,6 +460,8 @@ integer:
 				long long input;
 
 				if(modifier == 'q') {
+					input = va_arg(args, quad_t);
+				} else if(modifier == 'L') {
 					input = va_arg(args, long long);
 				} else if(modifier == 'l') {
 					input = va_arg(args, long);
@@ -420,6 +505,8 @@ integer:
 				unsigned long long input;
 
 				if(modifier == 'q') {
+					input = va_arg(args, u_quad_t);
+				} else if(modifier == 'L') {
 					input = va_arg(args, unsigned long long);
 				} else if(modifier == 'l') {
 					input = va_arg(args, unsigned long);
