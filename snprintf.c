@@ -30,9 +30,11 @@ int vsnprintf(char *str, size_t size, const char *format, va_list args) {
 		alt = 0;
 		ljust = 0;
 		plus = 0;
+		capital = 0;
 		expform = 0;
 		width = -1;
 		prec = -1;
+		base = -1;
 
 flags:
 		switch(*format) {
@@ -55,6 +57,11 @@ flags:
 			plus = '+';
 			format++;
 			goto flags;
+
+			case '^':
+			capital = 1;
+			format++;
+			goto flags;
 		}
 
 		/* width */
@@ -71,6 +78,13 @@ flags:
 				prec = prec * 10 + *format - '0';
 		}
 
+		/* base */
+		if(*format == '_') {
+			base = 0;
+			while(*++format >= '0' && *format <= '9')
+				base = base * 10 + *format - '0';
+		}
+
 		/* conversion modifiers */
 		modifier = 0;
 		switch(*format) {
@@ -81,7 +95,6 @@ flags:
 			modifier = *format++;
 		}
 
-		capital = 0;
 		type = *format;
 		switch(type) {
 		case 'd':       /*   signed decimal int */
@@ -91,7 +104,8 @@ flags:
 			} else {
 				inputll = va_arg(args, int);
 			}
-			base = 10;
+			if(base == -1)
+				base = 10;
 			is_signed = 1;
 			goto number;
 
@@ -101,7 +115,8 @@ flags:
 			} else {
 				inputull = va_arg(args, unsigned int);
 			}
-			base = 8;
+			if(base == -1)
+				base = 8;
 			is_signed = 0;
 			goto number;
 
@@ -111,7 +126,8 @@ flags:
 			} else {
 				inputull = va_arg(args, unsigned int);
 			}
-			base = 10;
+			if(base == -1)
+				base = 10;
 			is_signed = 0;
 			goto number;
 
@@ -133,7 +149,8 @@ flags:
 			} else {
 				inputull = va_arg(args, unsigned int);
 			}
-			base = 16;
+			if(base == -1)
+				base = 16;
 			is_signed = 0;
 			goto number;
 
@@ -380,8 +397,6 @@ flt:
 			break;
 #endif
 
-
-
 		default:
 			addch('%');
 			addch('?');
@@ -396,6 +411,12 @@ number:
 		{
 			int length, spaces, zeros;
 			char buf[64], sign, tmpch, hexspecial = 0;
+			const char *charset;
+
+			if(capital)
+				charset = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+			else
+				charset = "0123456789abcdefghijklmnopqrstuvwxyz";
 
 			if(is_signed) {
 				if(inputll < 0) {
@@ -409,12 +430,7 @@ number:
 				if(inputll || (width && prec)) {
 					length = 0;
 					do {
-						tmpch = inputll % base;
-						if(tmpch < 10) 
-							tmpch += '0';
-						else
-							tmpch += capital ? ('A' - 10) : ('a' - 10);
-						buf[length++] = tmpch;
+						buf[length++] = charset[inputll % base];
 						inputll /= base;
 					} while(inputll && length < sizeof(buf));
 				} else {
@@ -429,12 +445,7 @@ number:
 				if(inputull || (width && prec)) {
 					length = 0;
 					do {
-						tmpch = (unsigned)(inputull % (unsigned)base);
-						if(tmpch < 10) 
-							tmpch += '0';
-						else
-							tmpch += capital ? ('A' - 10) : ('a' - 10);
-						buf[length++] = tmpch;
+						buf[length++] = charset[inputull % (unsigned)base];
 						inputull /= (unsigned)base;
 					} while(inputull && length < sizeof(buf));
 				} else {
