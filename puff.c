@@ -3,6 +3,7 @@ bugs:
 	make sure strncpy/strcpy/strncat/strcat aren't used, in favor of strlcpy/strlcat
 	long filename should be shortened with ... on the status line.
 	ENODEV doesn't make sense on some systems
+	Resizing the screen can leave the current line out of sight
 
 to-do:
 	+20 cmd-line option to go to line 20
@@ -506,11 +507,11 @@ int seekbyte(int curfile, off_t offset) {
 		display_line(curfile, -1);
 	}
 
-/*	if(TOPLINE - oldtopline < VSIZE - HCURSOR) {
-		HCURSOR += TOPLINE - oldtopline;
-		TOPLINE = oldtopline;
-	}
-*/
+//	if(TOPLINE - oldtopline < VSIZE - HCURSOR) {
+//		HCURSOR += TOPLINE - oldtopline;
+//		TOPLINE = oldtopline;
+//	}
+
 	return OK;
 }
 
@@ -1196,7 +1197,7 @@ void sigs(int sig) {
 	/* Don't let the signal handler run within itself */
 	/* We only enqueue one signal because repeated SIGWINCHs don't matter
 	 * as long as the last one is handled.  SIGHUP causes a re-configure
-	 * and the config file won't change that quick, and the other cause us
+	 * and the config file won't change that quick, and the others cause us
 	 * to exit anyway. */
 	if(raisedsignal) {
 		nextsignal = sig;
@@ -1250,7 +1251,7 @@ next_signal:
 			printf("File size limit exceeded.\n");
 		}
 		exit(1);
-#ifndef __sun__
+#ifndef __sun__   /* SunOS appears to be missing wresize. */
 	} else if(sig == SIGWINCH) {
 		struct winsize ws;
 		int tmpint;
@@ -2016,7 +2017,12 @@ int main(int Argc, char **Argv) {
 		printf("Out of memory.\n");
 		exit(1);
 	}
-// initialie all to keynothing first
+
+	/* Initialize all to keynothing first to make sure we don't miss one. */
+	tmpint = KLAST - KFIRST;
+	while(tmpint--)
+		funcarray[tmpint] = keynothing;
+
 	funcarray[KOPEN      - KFIRST] = keyopen;
 	funcarray[KREDRAW    - KFIRST] = keyredraw;
 	funcarray[KEXIT      - KFIRST] = keyexit;
@@ -2055,9 +2061,9 @@ int main(int Argc, char **Argv) {
 
 	{
 		struct passwd *userpwd;
-		if((userpwd = getpwuid(getuid()))) {
-			if(strlcpy(homedir, userpwd->pw_dir, sizeof(homedir)) >= sizeof(homedir)) *homedir = 0;
-		}
+		if((userpwd = getpwuid(getuid())))
+			if(strlcpy(homedir, userpwd->pw_dir, sizeof(homedir)) >= sizeof(homedir))
+				*homedir = 0;
 	}
 
 	for(tmpint = 0; tmpint < PUFF_MAX_FILES; tmpint++) {
@@ -2068,6 +2074,7 @@ int main(int Argc, char **Argv) {
 	putenv("NCURSES_NO_PADDING=1");
 
 	initscr();
+// Can this be done with a SIGWINCH?
 	if(COLS < 5 || LINES < 2) {
 		endwin();
 		printf("Term too small.\n");
@@ -2176,12 +2183,13 @@ int main(int Argc, char **Argv) {
 		if(curfile != -1) { redrawwin(WIN); wnoutrefresh(WIN); }
 		doupdate();
 
+// This isn't right!
 		while((key = kgetkey(statuswin)) == ERR) {
 			if(fstat(STDIN_FILENO, &sb))
 				raise(SIGTERM);
 		}
 
-		if((key > 31 && key < 127) || key == KTAB) {
+		if(curfile != -1 && ((key > 31 && key < 127) || key == KTAB)) {
 			if(key == KTAB) key = '\t';
 			HCURSOR = REALH;
 			*tmpstr = (char)key;
