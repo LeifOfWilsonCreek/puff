@@ -1067,7 +1067,7 @@ next_signal:
 			printf("File size limit exceeded.\n");
 		}
 		exit(1);
-#ifndef __sun__   /* SunOS appears to be missing wresize. */
+#ifndef __sun__   /* SunOS appears to be missing resizeterm() and wresize(). */
 	} else if(sig == SIGWINCH) {
 		struct winsize ws;
 		int tmpint;

@@ -132,7 +132,7 @@ int file_save(EDITFILE *file) {
 		return -1;
 	}
 
-#ifndef __linux__
+#if !defined __linux__ && !defined __sun__
 	if(!file->mods) {
 		futimes(file_fileno(file), NULL);
 		return 0;
