@@ -99,6 +99,7 @@ int page_skip;
 int save_clipboard;
 int lock_files;
 int window_margin;	/* The minimum number of lines to keep on the screen above and below the cursor */
+int seek_centers;
 
 /* Some function prototypes that can't be declared before they are used. */
 int keyleft();
@@ -910,6 +911,8 @@ void configure_file(char *filename) {
 					color_term = strtol(ptr + 11, 0, 0);
 				} else if(!strncasecmp(ptr, "window_margin=", 14)) {
 					window_margin = strtol(ptr + 14, 0, 0);
+				} else if(!strncasecmp(ptr, "seek_centers=", 13)) {
+					seek_centers = strtol(ptr + 13, 0, 0);
 				}
 			}
 		}
@@ -928,6 +931,7 @@ int configure() {
 	save_clipboard = -1;
 	lock_files = -1;
 	window_margin = -1;
+	seek_centers = -1;
 	configure_file("/etc/puff.conf");
 	strlcpy(tmpstr, homedir, sizeof(tmpstr));
 	strlcat(tmpstr, "/.puff.conf", sizeof(tmpstr));
@@ -1141,11 +1145,13 @@ exit_sig:
 
 int seekbyte(int curfile, off_t offset) {
 	int linenum; /* 0-based index */
-	int oldtopline; /* For scrolling */
+	int oldtopline; /* To optimize text output by scrolling if possible */
 	int loop;
 
 	/* Don't seek to a negative offset. */
 	if(offset < 0) return ERR;
+	if(offset > file_size(FP))
+		offset = file_size(FP);
 	linenum = file_findoff(FP, offset);
 	if(linenum == -1) return ERR;
 
@@ -1157,30 +1163,27 @@ int seekbyte(int curfile, off_t offset) {
 	else if(VCURSOR > VSIZE - window_margin - 1)
 		VCURSOR = VSIZE - window_margin - 1;
 
-	if(linenum < TOPLINE || linenum >= TOPLINE + VSIZE) {
-		/* It's off the screen, don't move the cursor. */
-		TOPLINE = linenum - VCURSOR;
-	} else if(linenum < TOPLINE + window_margin) {
-		/* The target is between the top of the window and the upper
-		 * window margin. */
-		VCURSOR = window_margin;
-		TOPLINE = linenum - VCURSOR;
-	} else if(linenum > TOPLINE + VSIZE - window_margin - 1) {
-		/* The target is between the bottom of the window and the lower
-		 * window margin. */
-		VCURSOR = VSIZE - window_margin - 1;
+	if(seek_centers) {
+		/* This flag means to center the cursor vertically, if possible */
+		VCURSOR = VSIZE / 2;
 		TOPLINE = linenum - VCURSOR;
 	} else {
-		/* Just move the cursor. */
-		VCURSOR = linenum - TOPLINE;
-	}
+		if(linenum < TOPLINE + window_margin || linenum >= TOPLINE + VSIZE - window_margin - 1) {
+			/* It's off the screen, don't move the cursor. */
+			TOPLINE = linenum - VCURSOR;
+		} else {
+			/* Just move the cursor. */
+			VCURSOR = linenum - TOPLINE;
+	}	}
 
 	if(TOPLINE < 0) {
-		/* This might require the cursor to move above the minimum VCURSOR. */
+		/* This might require the cursor to move above window_margin. */
 		TOPLINE = 0;
 		VCURSOR = linenum;
 	}
+	/* Now we're on the right line. */
 
+	/* Update display */
 	if(abs(TOPLINE - oldtopline) < VSIZE) {
 		/* Scroll */
 		scrollok(finfo[curfile].win, TRUE);
@@ -1204,16 +1207,12 @@ int seekbyte(int curfile, off_t offset) {
 		display_file(curfile);
 	}
 
-	/* Now we're on the right line.  Find the right horizontal position. */
-
+	/* Position cursor horizontally. */
 	HCURSOR = REALH = 0;
 	display_line(curfile, -1);	/* get accurate offset */
 	REALH = offset - OFFSET;	/* approximate horiz position */
 	display_line(curfile, -1);
 	while(abs(OFFSET - offset) > tab_size * 3) {
-		/* same as: while(OFFSET < offset - tab_size * 3 ||
-		 * OFFSET > offset + tab_size * 3) { */
-
 		/* speed optimization - get close quickly, not really necessary, but
 		 * EOL can be -really- slow without this */
 		HCURSOR += offset - OFFSET;
