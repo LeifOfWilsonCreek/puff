@@ -66,8 +66,9 @@ order:
     - "c":  Type is int and may not be overridden, "#" is meaningless, precision
       is meaningless.  The integer is converted to (unsigned char), then
       displayed.
-    - "f":  Type is double, default base is 10, "#" means a period shows even if
-      precision is zero, precision is the number of digits after the period.
+    - "f":  Type is double (not float!), default base is 10, "#" means a period
+      shows even if precision is zero, precision is the number of digits after
+      the period.
     - "%":  Takes no parameter, displays "%" in the same manner as "c" would.
     - "e", "E", "g", or "G":  Not implemented yet
 
@@ -89,7 +90,8 @@ says width never truncates a field, so the width of a string is the /minimum/
 number of characters, while the /precision/ is the maximum.  I did it the BSD
 way because it's more regular and I don't think anyone implements the other way.
 
-// XXX: fix base < 2
+// XXX: fix base < 2 || base > 36
+// XXX: fix long-doubles
 // XXX: what about %#.0o
 
 #endif
