@@ -8,6 +8,12 @@
 #include <string.h>
 #include <sys/types.h>
 
+#if defined(__linux__) || defined(__sun__)
+#	define STACK_SHORT int  /* THIS SUCKS! */
+#else
+#	define STACK_SHORT short
+#endif
+
 #define addch(ch) {if(index < size) str[index++] = (ch); else index++;}
 #define endstr() {if(index < size) str[index] = 0; else if(size) str[size-1] = 0;}
 
@@ -375,7 +381,7 @@ integer:
 				} else if(modifier == 'l') {
 					input = va_arg(args, long);
 				} else if(modifier == 'h') {
-					input = va_arg(args, short);
+					input = va_arg(args, STACK_SHORT);
 				} else {
 					input = va_arg(args, int);
 				}
@@ -418,7 +424,7 @@ integer:
 				} else if(modifier == 'l') {
 					input = va_arg(args, unsigned long);
 				} else if(modifier == 'h') {
-					input = va_arg(args, unsigned short);
+					input = va_arg(args, unsigned STACK_SHORT);
 				} else {
 					input = va_arg(args, unsigned int);
 				}
