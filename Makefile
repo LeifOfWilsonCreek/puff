@@ -5,7 +5,7 @@ PUFFHEAD = shared.h editfile.h keys.h
 
 all: fortune puff
 fortune:
-	fortune 2> /dev/null || echo -n
+	(fortune 2> /dev/null || echo -n)
 install: all
 	cp puff /usr/local/bin/puff
 	if [ ! -e /etc/puff.conf ]; then cp puff.conf /etc; fi
