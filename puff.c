@@ -1550,6 +1550,10 @@ int keysearchnext() {
 	off_t tmpoff;
 
 	if(curfile == -1) return ERR;
+	if(! old_search.text[0]) {
+		redraw_statuswin("Blank");
+		return ERR;
+	}
 	redraw_statuswin("Searching...");
 	tmpint = strlen(old_search.text);
 	tmpoff = file_search(FP, old_search.text, tmpint, OFFSET + 1, file_size(FP),
@@ -1577,11 +1581,7 @@ int keysearch() {
 	redraw_statuswin("Search for:  ");
 	strcpy(new_search.text, old_search.text);
 	if(kgetstr(statuswin, new_search.text, sizeof(new_search.text), "search") == ERR) goto cancel;
-	if(! new_search.text[0]) {
-		if(old_search.text[0]) return keysearchnext();
-		redraw_statuswin("Blank");
-		return ERR;
-	}
+	if(! new_search.text[0]) return keysearchnext();
 
 	redraw_statuswin("Case sensitive (yes/no/Sorta)?  ");
 	new_search.sensitive = 'S';
