@@ -1,7 +1,15 @@
 /* This must be compiled with the math library (-lm) for pow() and log() if
  * floating point support is compiled in */
 
-#if 0
+/* Define DOUBLE if pow() and log() are available. */
+#define DOUBLE
+
+/* If LONG_DOUBLE is not defined, long doubles will be converted to doubles
+ * before they are processed.  If it is defined, they are supported normally.
+ * Don't define this yet, see bug below. */
+//#define LONG_DOUBLE
+
+/*
 
 The format string is based on (and compatible with) POSIX's printf's format
 string.  Features which do not appear in POSIX are marked "not POSIX".  The
@@ -90,11 +98,16 @@ says width never truncates a field, so the width of a string is the /minimum/
 number of characters, while the /precision/ is the maximum.  I did it the BSD
 way because it's more regular and I don't think anyone implements the other way.
 
+ - Regarding (long double) support:
+These are not really supported.  They are converted to doubles before processing
+because pow() and log() can only operate on doubles.  It would cause Bad Things
+if converting from long double to double produced Inf or -Inf where log() and
+pow() are called.
+
 // XXX: fix base < 2 || base > 36
-// XXX: fix long-doubles
 // XXX: what about %#.0o
 
-#endif
+ */
 
 
 
@@ -326,7 +339,11 @@ modifiers:
 
 		case 'f':
 			{
+#ifdef LONG_DOUBLE
 				long double input;
+#else
+				double input;
+#endif
 				int length, exp, spaces;
 				const char *charset;
 				char sign;
@@ -408,6 +425,9 @@ modifiers:
 				if(input < base)
 					exp = 0;
 				else
+#ifdef LONG_DOUBLE  /* log() on the line below is for doubles */
+#warning Long doubles currently cause infinite loops in some cases
+#endif
 					exp = log(input) / log(base);
 
 
@@ -442,6 +462,9 @@ modifiers:
 					addch(sign);
 
 				/* Generate the integer-part */
+#ifdef LONG_DOUBLE  /* pow() on the line below is for doubles */
+#warning Long doubles currently cause infinite loops in some cases
+#endif
 				input /= pow(base, exp); /* Normalize */
 				while(exp >= 0) {
 					addch(charset[(int)input]);
