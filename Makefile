@@ -1,28 +1,26 @@
-#MAKECMD = $(CC) -O3
-MAKECMD = $(CC) -Wall -g -DDEBUG
-PUFFOBJS = shared.o editfile.o keys.o puff.o
-PUFFHEAD = shared.h editfile.h keys.h
+PREFIX ?= /usr/local
+CFLAGS += -Wall -O3
+#CFLAGS += -DDEBUG -g
+OBJS = shared.o editfile.o keys.o puff.o
+HEAD = shared.h editfile.h keys.h
+LIBS = -lcurses -lm
 
 all: fortune puff
 fortune:
 	-@fortune
 install: all
-	cp puff /usr/local/bin/puff
-	if [ ! -e /etc/puff.conf ]; then cp puff.conf /etc; fi
+	install puff $(PREFIX)/bin
+	install puff.conf $(PREFIX)/etc/puff.conf.sample
 uninstall:
-	rm -f /usr/local/bin/puff /etc/puff.conf
+	rm -f $(PREFIX)/bin/puff $(PREFIX)/etc/puff.conf
 clean:
-	rm -f $(PUFFOBJS) puff.core core puff testedit.o testedit.core testedit
+	rm -f $(OBJS) puff.core core puff testedit.o testedit.core testedit
 pack:
 	cd .. && rm -f puff.tgz && tar zcvf puff.tgz puff/{Makefile,*.[ch],puff.conf} && cd puff
 
-puff: $(PUFFOBJS)
-	$(MAKECMD) -o puff $(PUFFOBJS) -lcurses -lm
+puff: $(OBJS)
+	$(CC) $(CFLAGS) -o puff $(OBJS) $(LIBS)
 shared.o: shared.c shared.h strlcat.c strlcpy.c snprintf.c
-	$(MAKECMD) -c shared.c
 editfile.o: editfile.c editfile.h
-	$(MAKECMD) -c editfile.c
 keys.o: keys.c keys.h shared.h
-	$(MAKECMD) -c keys.c
-puff.o: puff.c $(PUFFHEAD)
-	$(MAKECMD) -c puff.c
+puff.o: puff.c $(HEAD)
