@@ -570,6 +570,8 @@ void configure_file(char *filename) {
 					nextchar = KSPECIAL;
 				} else if(!strcasecmp(keyword, "SEARCH")) {
 					nextchar = KSEARCH;
+				} else if(!strcasecmp(keyword, "SEARCHNEXT")) {
+					nextchar = KSEARCHNEXT;
 				} else if(!strcasecmp(keyword, "EXIT")) {
 					nextchar = KEXIT;
 				} else if(!strcasecmp(keyword, "NEW")) {
@@ -978,6 +980,9 @@ int configure() {
 		keys[definedkeys][0] = KEOL;        keys[definedkeys][1] = 5;           keys[definedkeys++][2] = -1;
 		/* ctrl-f */
 		keys[definedkeys][0] = KFILEMENU;   keys[definedkeys][1] = 6;           keys[definedkeys++][2] = -1;
+		/* ctrl-g */
+		keys[definedkeys][0] = KSEARCHNEXT; keys[definedkeys][1] = 7;           keys[definedkeys++][2] = -1;
+		/* (ctrl-h = backspace) */
 		/* ctrl-i / tab */
 		keys[definedkeys][0] = KTAB;        keys[definedkeys][1] = 9;           keys[definedkeys++][2] = -1;
 		/* ctrl-j / ctrl-m / '\n' */
@@ -986,6 +991,7 @@ int configure() {
 		keys[definedkeys][0] = KCUT;        keys[definedkeys][1] = 11;          keys[definedkeys++][2] = -1;
 		/* ctrl-l */
 		keys[definedkeys][0] = KREDRAW;     keys[definedkeys][1] = 12;          keys[definedkeys++][2] = -1;
+		/* (ctrl-m = enter) */
 		/* ctrl-n */
 		keys[definedkeys][0] = KCLEARCLIP;  keys[definedkeys][1] = 14;          keys[definedkeys++][2] = -1;
 		/* ctrl-p */
@@ -1534,8 +1540,8 @@ int keyseekbyte() {
 	return OK;
 }
 
+static char lastsearch[MAX_COLS+1] = "";
 int keysearch() {
-	static char lastsearch[MAX_COLS+1] = "";
 	char tmpstr[MAX_COLS+1];
 	int tmpint;
 	off_t tmpoff;
@@ -1547,15 +1553,22 @@ int keysearch() {
 		redraw_statuswin("file");
 		return ERR;
 	}
-	if(!*tmpstr) strcpy(tmpstr, lastsearch);
-	else strcpy(lastsearch, tmpstr);
+	if(*tmpstr) strcpy(lastsearch, tmpstr);
+	return keysearchnext();
+}
+
+int keysearchnext() {
+	int tmpint;
+	off_t tmpoff;
+
+	if(curfile == -1) return ERR;
 	redraw_statuswin("Searching...");
-	tmpint = strlen(tmpstr);
-	tmpoff = file_search(FP, tmpstr, tmpint, OFFSET+1, file_size(FP), 0);
+	tmpint = strlen(lastsearch);
+	tmpoff = file_search(FP, lastsearch, tmpint, OFFSET+1, file_size(FP), 0);
 	redraw_statuswin("file");
 	if(tmpoff == -1) {
 		redraw_statuswin("Search wrapped...");
-		tmpoff = file_search(FP, tmpstr, tmpint, 0, OFFSET + tmpint, 0);
+		tmpoff = file_search(FP, lastsearch, tmpint, 0, OFFSET + tmpint, 0);
 		if(tmpoff != -1) redraw_statuswin("Search wrapped");
 	}
 	if(tmpoff == -1) {
@@ -2073,41 +2086,42 @@ int main(int Argc, char **Argv) {
 	while(tmpint--)
 		funcarray[tmpint] = keynothing;
 
-	funcarray[KOPEN      - KFIRST] = keyopen;
-	funcarray[KREDRAW    - KFIRST] = keyredraw;
-	funcarray[KEXIT      - KFIRST] = keyexit;
-	funcarray[KCLOSE     - KFIRST] = keyclose;
-	funcarray[KSWITCH    - KFIRST] = keyswitch;
-	funcarray[KDOWN      - KFIRST] = keydown;
-	funcarray[KUP        - KFIRST] = keyup;
-	funcarray[KLEFT      - KFIRST] = keyleft;
-	funcarray[KRIGHT     - KFIRST] = keyright;
-	funcarray[KBOL       - KFIRST] = keybol;
-	funcarray[KEOL       - KFIRST] = keyeol;
-	funcarray[KPPAGE     - KFIRST] = keyppage;
-	funcarray[KNPAGE     - KFIRST] = keynpage;
-	funcarray[KBACKSPACE - KFIRST] = keybackspace;
-	funcarray[KINSERT    - KFIRST] = keynothing;
-	funcarray[KDELETE    - KFIRST] = keydelete;
-	funcarray[KQSAVE     - KFIRST] = keyqsave;
-	funcarray[KTAB       - KFIRST] = keynothing;
-	funcarray[KENTER     - KFIRST] = keyenter;
-	funcarray[KSIZE      - KFIRST] = keynothing;
-	funcarray[KCANCEL    - KFIRST] = keynothing;
-	funcarray[KCLEARCLIP - KFIRST] = keyclearclip;
-	funcarray[KCUT       - KFIRST] = keycut;
-	funcarray[KPASTE     - KFIRST] = keypaste;
-	funcarray[KSEEKLINE  - KFIRST] = keyseekline;
-	funcarray[KSEEKBYTE  - KFIRST] = keyseekbyte;
-	funcarray[KSAVE      - KFIRST] = keysave;
-	funcarray[KNEW       - KFIRST] = keynew;
-	funcarray[KSEARCH    - KFIRST] = keysearch;
-	funcarray[KSPECIAL   - KFIRST] = keyspecial;
-	funcarray[KFILEMENU  - KFIRST] = keyfilemenu;
-	funcarray[KSUSPEND   - KFIRST] = keysuspend;
-	funcarray[KKILL      - KFIRST] = keykill;
-	funcarray[KKILLBOL   - KFIRST] = keykillbol;
-	funcarray[KKILLEOL   - KFIRST] = keykilleol;
+	funcarray[KOPEN       - KFIRST] = keyopen;
+	funcarray[KREDRAW     - KFIRST] = keyredraw;
+	funcarray[KEXIT       - KFIRST] = keyexit;
+	funcarray[KCLOSE      - KFIRST] = keyclose;
+	funcarray[KSWITCH     - KFIRST] = keyswitch;
+	funcarray[KDOWN       - KFIRST] = keydown;
+	funcarray[KUP         - KFIRST] = keyup;
+	funcarray[KLEFT       - KFIRST] = keyleft;
+	funcarray[KRIGHT      - KFIRST] = keyright;
+	funcarray[KBOL        - KFIRST] = keybol;
+	funcarray[KEOL        - KFIRST] = keyeol;
+	funcarray[KPPAGE      - KFIRST] = keyppage;
+	funcarray[KNPAGE      - KFIRST] = keynpage;
+	funcarray[KBACKSPACE  - KFIRST] = keybackspace;
+	funcarray[KINSERT     - KFIRST] = keynothing;
+	funcarray[KDELETE     - KFIRST] = keydelete;
+	funcarray[KQSAVE      - KFIRST] = keyqsave;
+	funcarray[KTAB        - KFIRST] = keynothing;
+	funcarray[KENTER      - KFIRST] = keyenter;
+	funcarray[KSIZE       - KFIRST] = keynothing;
+	funcarray[KCANCEL     - KFIRST] = keynothing;
+	funcarray[KCLEARCLIP  - KFIRST] = keyclearclip;
+	funcarray[KCUT        - KFIRST] = keycut;
+	funcarray[KPASTE      - KFIRST] = keypaste;
+	funcarray[KSEEKLINE   - KFIRST] = keyseekline;
+	funcarray[KSEEKBYTE   - KFIRST] = keyseekbyte;
+	funcarray[KSAVE       - KFIRST] = keysave;
+	funcarray[KNEW        - KFIRST] = keynew;
+	funcarray[KSEARCH     - KFIRST] = keysearch;
+	funcarray[KSEARCHNEXT - KFIRST] = keysearchnext;
+	funcarray[KSPECIAL    - KFIRST] = keyspecial;
+	funcarray[KFILEMENU   - KFIRST] = keyfilemenu;
+	funcarray[KSUSPEND    - KFIRST] = keysuspend;
+	funcarray[KKILL       - KFIRST] = keykill;
+	funcarray[KKILLBOL    - KFIRST] = keykillbol;
+	funcarray[KKILLEOL    - KFIRST] = keykilleol;
 
 	{
 		struct passwd *userpwd;
