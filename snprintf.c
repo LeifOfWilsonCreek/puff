@@ -104,8 +104,6 @@ because pow() and log() can only operate on doubles.  It would cause Bad Things
 if converting from long double to double produced Inf or -Inf where log() and
 pow() are called.
 
-// XXX: what about %#.0o
-
  */
 
 
