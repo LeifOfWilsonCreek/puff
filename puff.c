@@ -1,7 +1,5 @@
 /*
 bugs:
-	keyeol() should not use seekbyte()
-	long filename should be shortened with ... on the status line.
 	ENODEV doesn't make sense on some systems
 	Resizing the screen can leave the current line out of sight
 	Cutting should "paste" into the clipboard so the window moves properly
