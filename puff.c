@@ -331,6 +331,7 @@ int openfile(int curfile, char *filename) {
 	char tmpstr[MAXPATHLEN], tmpchar;
 
 	strcpy(NAME, filename);
+	redraw_statuswin("Opening %s...", NAME);
 
 	if(stat(filename, &new_stat)) {
 		redraw_statuswin("%s:  %s", filename, strerror(errno));
@@ -391,6 +392,7 @@ int openfile(int curfile, char *filename) {
 	idlok(WIN, TRUE);
 
 	display_file(curfile);
+	redraw_statuswin("Opening %s...", NAME);  /* Because the first time we find the number of lines in the file may take awhile. */
 	redraw_statuswin("file");
 
 	if(snprintf(tmpstr, sizeof(tmpstr), "%s.changes", NAME) >= sizeof(tmpstr)) return OK;
@@ -1143,7 +1145,10 @@ exit_sig:
 	raisedsignal = 0;
 }
 
-int seekbyte(int curfile, off_t offset) {
+/* Callers pass in either 0 or seek_centers for the third arg because things
+ * like searching should honor the option, but things like EOF should not kick
+ * the cursor around. */
+int seekbyte(int curfile, off_t offset, int vcenter) {
 	int linenum; /* 0-based index */
 	int oldtopline; /* To optimize text output by scrolling if possible */
 	int loop;
@@ -1163,7 +1168,7 @@ int seekbyte(int curfile, off_t offset) {
 	else if(VCURSOR > VSIZE - window_margin - 1)
 		VCURSOR = VSIZE - window_margin - 1;
 
-	if(seek_centers) {
+	if(vcenter) {
 		/* This flag means to center the cursor vertically, if possible */
 		VCURSOR = VSIZE / 2;
 		TOPLINE = linenum - VCURSOR;
@@ -1249,7 +1254,7 @@ int keyeol() {
 	if(offset == -1) offset = file_size(FP);
 	else if(offset != 0) offset--;
 
-	seekbyte(curfile, offset);
+	seekbyte(curfile, offset, 0);
 	return OK;
 }
 
@@ -1505,7 +1510,7 @@ int keyseekline() {
 		redraw_statuswin("Error finding offset - Shouldn't happen.");
 		return ERR;
 	}
-	seekbyte(curfile, tmpoff);
+	seekbyte(curfile, tmpoff, seek_centers);
 	redraw_statuswin("file");
 	return OK;
 }
@@ -1522,7 +1527,7 @@ int keyseekbyte() {
 		return ERR;
 	}
 	tmpoff = strtol(tmpstr, NULL, 0);
-	seekbyte(curfile, tmpoff);
+	seekbyte(curfile, tmpoff, seek_centers);
 	redraw_statuswin("file");
 	return OK;
 }
@@ -1555,7 +1560,7 @@ int keysearch() {
 		redraw_statuswin("Not found");
 		return ERR;
 	}
-	seekbyte(curfile, tmpoff);
+	seekbyte(curfile, tmpoff, seek_centers);
 	return OK;
 }
 
@@ -1632,7 +1637,7 @@ int keysave() {
 			}
 		}
 	}
-	redraw_statuswin("Saving...");
+	redraw_statuswin("Saving %s...", NAME);
 	if(!curfile) {
 		/* Don't change the name of the clipboard */
 		if(file_saveas(FP, tmpstr, (lock_files?FILE_LOCK:0)|FILE_ALLOWOVERWRITE|FILE_KEEPOLD, S_IRUSR|S_IWUSR)) {
@@ -1690,7 +1695,7 @@ int keyqsave() {
 	if(!*NAME || !curfile)
 		return keysave();
 
-	redraw_statuswin("Saving...");
+	redraw_statuswin("Saving %s...", NAME);
 	if(file_saveas(FP, NAME, (lock_files?FILE_LOCK:0)|FILE_ALLOWOVERWRITE, FILE_MODE666)) {
 		if(errno == EAGAIN) {
 			redraw_statuswin("%s", strerror(errno));
@@ -2004,7 +2009,7 @@ int keycut() {
 	HCURSOR = REALH = 0;
 	MODIFIED = 1;
 	finfo[0].modified = 1;
-	seekbyte(0, finfo[0].offset + tmpint);
+	seekbyte(0, finfo[0].offset + tmpint, 0);
 	display_file(0);
 	display_line(0, -1);
 	display_file(curfile);
@@ -2028,7 +2033,7 @@ int keypaste() {
 	tmpint = file_insert(FP, OFFSET, tmpint, ptr);
 	free(ptr);
 
-	seekbyte(curfile, OFFSET + tmpint);
+	seekbyte(curfile, OFFSET + tmpint, 0);
 	display_file(curfile);
 	MODIFIED = 1;
 	return OK;
@@ -2181,7 +2186,7 @@ int main(int Argc, char **Argv) {
 	}
 	curfile = 0;
 	strcpy(NAME, "Clipboard");
-	seekbyte(0, file_size(FP));
+	seekbyte(0, file_size(FP), seek_centers);
 	display_file(0);
 	redrawwin(stdscr);	/* clear screen */
 
