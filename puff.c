@@ -1,13 +1,12 @@
 /*
 bugs:
+	keyeol() should not use seekbyte()
 	long filename should be shortened with ... on the status line.
 	ENODEV doesn't make sense on some systems
 	Resizing the screen can leave the current line out of sight
 	Cutting should "paste" into the clipboard so the window moves properly
 
 to-do:
-	stop the cursor from being closer than N lines to the edge of the screen
-		change seekbyte() to do this...
 	+20 cmd-line option to go to line 20
 	top/bottom of file/screen
 	next-word
@@ -928,7 +927,7 @@ int configure() {
 	page_skip = -1;
 	save_clipboard = -1;
 	lock_files = -1;
-	window_margin = 5;
+	window_margin = -1;
 	configure_file("/etc/puff.conf");
 	strlcpy(tmpstr, homedir, sizeof(tmpstr));
 	strlcat(tmpstr, "/.puff.conf", sizeof(tmpstr));
@@ -1005,6 +1004,7 @@ int configure() {
 
 	if(tab_size < 1 || tab_size > 20) tab_size = 8;
 	if(page_skip < 0 || page_skip > LINES) page_skip = 1;
+	if(window_margin < 0 || window_margin > LINES / 2) window_margin = LINES / 5;
 
 	return OK;
 }
@@ -1387,11 +1387,12 @@ int keykilleol() {
 
 int keyppage() {
 	if(curfile == -1) return ERR;
-	display_line(curfile, VCURSOR);
 	if(TOPLINE == 0) {
+		/* Already on the top page, so go to the top of it. */
+		display_line(curfile, VCURSOR);
 		VCURSOR = 0;
 		HCURSOR = 0;
-		return ERR;
+		return OK;
 	}
 	TOPLINE -= VSIZE - page_skip;
 	if(TOPLINE < 0) TOPLINE = 0;
@@ -1401,14 +1402,16 @@ int keyppage() {
 
 int keynpage() {
 	if(curfile == -1) return ERR;
-	display_line(curfile, VCURSOR);
 	if(file_findline(FP, TOPLINE + VSIZE - page_skip) == -1) {
+		/* Already on the last page, so go to the bottom of it. */
+		display_line(curfile, VCURSOR);
 		VCURSOR = file_numlines(FP) - TOPLINE - 1;
 		keyeol();
-		return ERR;
+		return OK;
 	}
 	TOPLINE += VSIZE - page_skip;
 	if(file_findline(FP, TOPLINE + VCURSOR) == -1) {
+		/* VCURSOR is below the end of the file. */
 		VCURSOR = file_numlines(FP) - TOPLINE - 1;
 		keyeol();
 	}
