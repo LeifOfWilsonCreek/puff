@@ -1,24 +1,24 @@
 /* This must be compiled with the math library (-lm) */
 
-// floating point types are not done
+// The e, E, g, and G types are unimplemented
+// finite() and isnan() are not done right for long doubles
 
-#include <errno.h>
+#include <ctype.h>
+#include <ieeefp.h>
 #include <math.h>
 #include <stdarg.h>
 #include <string.h>
 #include <sys/types.h>
 
+#define addch(ch) {if(index < size) str[index++] = (ch); else index++;}
+#define endstr() {if(index < size) str[index] = 0; else if(size) str[size-1] = 0;}
 
 int vsnprintf(char *str, size_t size, const char *format, va_list args) {
-#	define addch(ch) {if(index < size) str[index++] = (ch); else index++;}
-#	define endstr() {if(index < size) str[index] = 0; else if(size) str[size-1] = 0;}
 	size_t index = 0;
 
 	/* flags */
-	char type,alt,ljust,plus,modifier,capital,expform,is_signed;
+	char type,alt,alt_hex,ljust,plus,modifier,capital,is_signed;
 	int width, prec, base;
-	long long inputll = 0;
-	unsigned long long inputull = 0;
 
 	format--;
 	while(*++format) {
@@ -29,37 +29,39 @@ int vsnprintf(char *str, size_t size, const char *format, va_list args) {
 		format++;
 
 		alt = 0;
+		alt_hex = 0;
 		ljust = 0;
 		plus = 0;
+		modifier = 0;
 		capital = 0;
-		expform = 0;
+		is_signed = 0;
 		width = -1;
 		prec = -1;
 		base = -1;
 
 flags:
 		switch(*format) {
-			case '#':       /* alternate form */
+		case '#':       /* alternate form */
 			alt = 1;
 			format++;
 			goto flags;
 
-			case '-':       /* left-justify */
+		case '-':       /* left-justify */
 			ljust = 1;
 			format++;
 			goto flags;
 
-			case ' ':       /* leave space before positive */
+		case ' ':       /* leave space before positive */
 			if(!plus) plus = ' ';
 			format++;
 			goto flags;
 
-			case '+':		/* force sign indicator */
+		case '+':       /* force sign indicator */
 			plus = '+';
 			format++;
 			goto flags;
 
-			case '^':
+		case '^':       /* use capital character set */
 			capital = 1;
 			format++;
 			goto flags;
@@ -87,335 +89,264 @@ flags:
 		}
 
 		/* conversion modifiers */
-		modifier = 0;
+modifiers:
 		switch(*format) {
-			case 'q':       /* Long long (quad) */
-			case 'h':	/* Short */
-			case 'l':	/* Long */
-			case 'L':       /* Long double */
-			modifier = *format++;
+		case 'q':       /* Long long (quad_t) */
+			modifier = 'q';
+			format++;
+			goto modifiers;
+		case 'l':	/* Long */
+			if(modifier == 'l')
+				modifier = 'q';
+			else
+				modifier = 'l';
+			format++;
+			goto modifiers;
+		case 'h':	/* Short */
+			modifier = 'h';
+			format++;
+			goto modifiers;
+		case 'L':       /* Long (for double) */
+			modifier = 'l';
+			format++;
+			goto modifiers;
 		}
 
 		type = *format;
 		switch(type) {
 		case 'd':       /*   signed decimal int */
 		case 'i':       /*   signed decimal int */
-			if(modifier == 'q') {
-				inputll = va_arg(args, long long);
-			} else {
-				inputll = va_arg(args, int);
-			}
 			if(base == -1)
 				base = 10;
 			is_signed = 1;
-			goto number;
+			goto integer;
 
 		case 'o':       /* unsigned octal   int */
-			if(modifier == 'q') {
-				inputull = va_arg(args, unsigned long long);
-			} else {
-				inputull = va_arg(args, unsigned int);
-			}
 			if(base == -1)
 				base = 8;
-			is_signed = 0;
-			goto number;
+			goto integer;
 
 		case 'u':       /* unsigned decimal int */
-			if(modifier == 'q') {
-				inputull = va_arg(args, unsigned long long);
-			} else {
-				inputull = va_arg(args, unsigned int);
-			}
 			if(base == -1)
 				base = 10;
-			is_signed = 0;
-			goto number;
+			goto integer;
 
-		case 'p':
-			addch('0');
-			addch('x');
-			if(width == -1 && prec == -1)
+		case 'p':       /* pointer */
+			type = 'x';
+			alt = 1;
+			if(prec == -1)
 				prec = sizeof(void *) * 2;
-			else if(width == 2)
-				width--;
-			else if(width >= 3)
-				width =- 2;
 			/* FALLTHROUGH */
 		case 'X':       /* unsigned hex     int */
 			capital = 1;
+			/* FALLTHROUGH */
 		case 'x':       /* unsigned hex     int */
-			if(modifier == 'q') {
-				inputull = va_arg(args, unsigned long long);
-			} else {
-				inputull = va_arg(args, unsigned int);
-			}
+			if(alt)
+				alt_hex = 1;
 			if(base == -1)
 				base = 16;
-			is_signed = 0;
-			goto number;
+			goto integer;
 
-		case 's':       /* unsigned char * */
+		case 's':       /* string */
 			{
-				char *tmps;
+				const char *tmps;
 				int length, spaces;
 
-				tmps = va_arg(args, char *);
+				tmps = va_arg(args, const char *);
 				if(!tmps) tmps = "(null)";
 
 				/* Width is the minimum number of characters.
 				 * Precision is the maximum. */
 
-				length = strlen(tmps);
-				if(width >= 0 && length > width) length = width;
-				spaces = prec - length;
-				if(spaces < 0) spaces = 0;
+				length = 0;
+				if(prec >= 0)
+					/* Can't use strlen because it might not be null-term'd */
+					while(length < prec && tmps[length]) length++;
+				else
+					length = strlen(tmps);
+
+				if(width > length)
+					spaces = width - length;
+				else
+					spaces = 0;
 
 				if(!ljust)
 					while(spaces--)
 						addch(' ');
-				while(length--)
-					addch(*tmps++);
+				if(capital) {
+					while(length--)
+						addch(toupper(*tmps++));
+				} else if(alt) {
+					while(length--)
+						addch(tolower(*tmps++));
+				} else {
+					while(length--)
+						addch(*tmps++);
+				}
 				if(ljust)
-					while(width-- > 0)
+					while(spaces--)
 						addch(' ');
 			}
-			break;
+			continue;
 
 		case 'n':
 			if(modifier == 'q') {
 				(*va_arg(args, long long *)) = index;
+			} else if(modifier == 'l') {
+				(*va_arg(args, long *)) = index;
+			} else if(modifier == 'h') {
+				(*va_arg(args, short *)) = index;
 			} else {
 				(*va_arg(args, int *)) = index;
 			}
-			break;
+			continue;
 
 		case 'c':       /* unsigned char */
 			if(!ljust && width > 0) while(--width) addch(' ');
 			addch(va_arg(args, int));
 			if(ljust && width > 0) while(--width) addch(' ');
-			break;
+			continue;
 
 		case '%':
 			if(!ljust && width > 0) while(--width) addch(' ');
 			addch('%');
 			if(ljust && width > 0) while(--width) addch(' ');
-			break;
-
-
-
-#if 0
-			{
-				long double input;
-				int length, power, loop;
-				char sign;
-		case 'G':
-			capital = 1;
-		case 'g':
-				if(modifier == 'L') {
-					input = va_arg(args, long double);
-				} else {
-					input = va_arg(args, double);
-				}
-//				if(input > 
-				goto flt;
-				goto exp;
-		case 'E':
-				capital = 1;
-		case 'e':
-				if(modifier == 'L') {
-					input = va_arg(args, long double);
-				} else {
-					input = va_arg(args, double);
-				}
-
-exp:
-// Dunno how portable isinf() and isnan() are
-				power = 0;
-				if(isnan(input)) power = 1;
-				if(power || isinf(input)) {
-					width -= 3;
-					if(!ljust) {
-						while(width > 0) {
-							addch(' ');
-							width--;
-						}
-					}
-					if(power) {
-						addch('N');
-						addch('a');
-						addch('N');
-					} else {
-						addch('I');
-						addch('n');
-						addch('f');
-					}
-					while(width > 0) {
-						addch(' ');
-						width--;
-					}
-					break;
-				}
-
-				if(prec == -1) prec = 6;
-				if(input < 0) {
-					sign = '-';
-					input = -input;
-				} else {
-					sign = plus;
-				}
-				if(sign) width--;
-
-				power = log10(input);
-				if(power < 0)
-					power--;
-				length = prec + 5;      /* [-]1.000e[+-]00 */
-				if(power >  99)
-					length+=log10(power) - 1;
-				if(power < -99)
-					length+=log10(-power) - 1;
-				if(prec || alt) length++;
-				width -= length;
-				if(!ljust) {
-					while(width > 0) {
-						addch(' ');
-						width--;
-					}
-				}
-				if(sign)
-					addch(sign);
-				input /= pow(10, power); /* Start with just the first digit. */
-				/* Print first digit */
-				addch('0' + (char)input);
-				input -= (char)input;
-				input *= 10;
-
-				if(prec || alt)
-					addch('.');
-				loop = 0;
-				while(loop < prec) {
-					addch('0' + (char)input);
-					input -= (char)input;
-					input *= 10;
-					loop++;
-				}
-				addch(capital ? 'E' : 'e');
-				addch(power<0 ? '-' : '+');
-				if(power > -10 && power < 10)
-					addch('0');
-				if(power == 0) {
-					addch('0');
-				} else {
-					if(power < 0)
-						power = -power;
-					loop = log10(power);
-					loop = pow(10, loop);
-					while(loop > 0) {
-						addch('0' + (power / loop) % 10);
-						loop /= 10;
-					}
-				}
-				while(width > 0) {
-					addch(' ');
-					width--;
-				}
-			break;
+			continue;
 
 		case 'f':
-				if(modifier == 'L') {
+			{
+				long double input;
+				int length, exp, spaces;
+				const char *charset;
+				char sign;
+
+				if(capital)
+					charset = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+				else
+					charset = "0123456789abcdefghijklmnopqrstuvwxyz";
+
+				if(modifier == 'l')
 					input = va_arg(args, long double);
-				} else {
+				else
 					input = va_arg(args, double);
-				}
 
-flt:
-// Dunno how portable isinf() and isnan() are
-				power = 0;
-				if(isnan(input)) power = 1;
-				if(power || isinf(input)) {
-					width -= 3;
-					if(!ljust) {
-						while(width > 0) {
-							addch(' ');
-							width--;
-						}
-					}
-					if(power) {
-						addch('N');
-						addch('a');
-						addch('N');
+				if(!finite((double)input)) {
+					char buf[8];
+
+					length = 0;
+					if(isnan((double)input)) {
+						strcpy(buf, "NaN");
+						length = 3;
+					} else if(input < 1) {
+						strcpy(buf, "-Inf");
+						length = 4;
+					} else if(input > 1) {
+						strcpy(buf, "Inf");
+						length = 3;
 					} else {
-						addch('I');
-						addch('n');
-						addch('f');
+						strcpy(buf, "Error");
+						length = 5;
 					}
-					while(width > 0) {
-						addch(' ');
-						width--;
+
+					if(!ljust && width > length) {
+						spaces = width - length;
+						while(spaces--)
+							addch(' ');
 					}
-					break;
+					spaces = -1;
+					while(++spaces < length)
+						addch(buf[spaces]);
+					if(ljust && width > length) {
+						spaces = width - length;
+						while(spaces--)
+							addch(' ');
+					}
+					continue;
 				}
 
-
-				if(prec == -1) prec = 6;
 				if(input < 0) {
 					sign = '-';
 					input = -input;
 				} else {
 					sign = plus;
 				}
-				if(sign) width--;
 
-				power = log10(input);
-				if(power < 0)
-					power = 0;
-				length = power + prec + 1;      /* the length of the number */
-				if(prec || alt) length++;
-				width -= length;
-				if(!ljust) {
-					while(width > 0) {
+				if(base == -1)
+					base = 10;
+
+				if(prec == -1)
+					prec = 6;
+
+				if(input < base)
+					exp = 0;
+				else
+					exp = log(input) / log(base);
+
+
+				/* Figure the length of the number */
+				/* If there's a sign, add one to length */
+				if(sign)
+					length = 1;
+				else
+					length = 0;
+
+				/* Plus the length of the integer part */
+				length += exp + 1;
+
+				/* If there's a decimal point, add one to length */
+				if(prec || alt)
+					length++;
+
+				/* Plus the fractional part's length */
+				length += prec;
+
+				if(width > length)
+					spaces = width - length;
+				else
+					spaces = 0;
+
+
+				/* Now generate the string */
+				if(!ljust)
+					while(spaces--)
 						addch(' ');
-						width--;
-					}
-				}
-				if(sign) addch(sign);
-				input /= pow(10, power); /* Start with just the first digit. */
-				while(power >= 0) {
-					addch('0' + (char)input);
-					input -= (char)input;
-					input *= 10;
-					power--;
-				}
-				if(prec || alt) addch('.');
-				while(prec) {
-					addch('0' + (char)input);
-					input -= (char)input;
-					input *= 10;
-					prec--;
-				}
-				while(width > 0) {
-					addch(' ');
-					width--;
-				}
-			}
-			break;
-#endif
+				if(sign)
+					addch(sign);
 
+				/* Generate the integer-part */
+				input /= pow(base, exp); /* Normalize */
+				while(exp >= 0) {
+					addch(charset[(int)input]);
+					input -= (char)input;
+					input *= base;
+					exp--;
+				}
+
+				if(prec || alt) addch('.');
+
+				/* Generate the fraction-part */
+				while(prec--) {
+					addch(charset[(int)input]);
+					input -= (char)input;
+					input *= base;
+				}
+
+				if(ljust)
+					while(spaces--)
+						addch(' ');
+			}
+			continue;
 		default:
-			addch('%');
 			addch('?');
 		}
 		continue;
 
-
-
-/* displays "inputll" or "inputull" in base "base".  "is_signed" indicates
- * whether to use "inputll" or "inputull". */
-number:
+integer:
 		{
-			int length, spaces, zeros;
-			char buf[64], sign, hexspecial = 0;
+			/* buf must be able to accomidate a long-long in binary, plus a little */
+			char buf[sizeof(long long) * 8 + 5], sign;
 			const char *charset;
+			int length, spaces, zeros;
 
 			if(capital)
 				charset = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -423,42 +354,80 @@ number:
 				charset = "0123456789abcdefghijklmnopqrstuvwxyz";
 
 			if(is_signed) {
-				if(inputll < 0) {
+				long long input;
+
+				if(modifier == 'q') {
+					input = va_arg(args, long long);
+				} else if(modifier == 'l') {
+					input = va_arg(args, long);
+				} else if(modifier == 'h') {
+					input = va_arg(args, short);
+				} else {
+					input = va_arg(args, int);
+				}
+
+				if(input < 0) {
 					sign = '-';
-					inputll = -inputll;
+					input = -input;
 				} else {
 					sign = plus;
 				}
 
-				/* Figure out the unformatted number */
-				if(inputll || (width && prec)) {
-					length = 0;
-					do {
-						buf[length++] = charset[inputll % base];
-						inputll /= base;
-					} while(inputll && length < sizeof(buf));
+				/* Generate the digit string in reverse */
+				length = 0;
+				if(input) {
+					while(input && length < sizeof(buf)) {
+						buf[length++] = charset[input % base];
+						input /= base;
+					}
+
+					/* Octal in alternate format means prepend a zero */
+					if(alt && type == 'o')
+						buf[length++] = '0';
 				} else {
 					/* POSIX says that displaying 0 with width 0
 					 * produces a zero-length number */
-					length = 0;
+					if(width)
+						buf[length++] = '0';
 				}
 			} else {
+				unsigned long long input;
+
+				if(modifier == 'q') {
+					input = va_arg(args, unsigned long long);
+				} else if(modifier == 'l') {
+					input = va_arg(args, unsigned long);
+				} else if(modifier == 'h') {
+					input = va_arg(args, unsigned short);
+				} else {
+					input = va_arg(args, unsigned int);
+				}
+
 				sign = 0;
 
-				/* Figure out the unformatted number */
-				if(inputull || (width && prec)) {
-					length = 0;
-					do {
-						buf[length++] = charset[inputull % (unsigned)base];
-						inputull /= (unsigned)base;
-					} while(inputull && length < sizeof(buf));
+				/* Generate the digit string in reverse */
+				length = 0;
+				if(input) {
+					while(input && length < sizeof(buf)) {
+						buf[length++] = charset[input % base];
+						input /= base;
+					}
+
+					/* Octal in alternate format means prepend a zero */
+					if(alt && type == 'o')
+						buf[length++] = '0';
 				} else {
 					/* POSIX says that displaying 0 with width 0
-					 * produces a zero-length number.  With BSD,
-					 * displaying 0 with precision 0 also does. */
-					length = 0;
+					 * produces a zero-length number */
+					if(width)
+						buf[length++] = '0';
 				}
 			}
+			/* sign and alt_hex are done below because they come before zero-padding */
+
+			/* If there's a sign, it subtracts from width */
+			if(sign && width > 1)
+				width--;
 
 			/* Calculate how many spaces and zeros to pad */
 			if(prec > length) {
@@ -472,29 +441,22 @@ number:
 				if(spaces < 0)
 					spaces = 0;
 			}
-			if(sign && spaces) spaces--;
 
-			/* Special POSIX cases for octal and hex with '#' */
-			if(alt) {
-				if(type == 'o' && !zeros) {
-					zeros = 1;
-					if(spaces > 0)
-						spaces--;
-				} else if(type == 'x' && buf[0] && buf[0] != '0') {
-					if(spaces == 1)
-						spaces = 0;
-					else if(spaces > 1)
-						spaces -= 2;
-					hexspecial = 1;
-				}
+			/* Special case for prepending 0x */
+			if(alt_hex) {
+				if(spaces == 1)
+					spaces = 0;
+				else if(spaces > 1)
+					spaces -= 2;
 			}
 
 			/* Construct the final output */
 			if(!ljust)
 				while(spaces--)
 					addch(' ');
-			if(sign) addch(sign);
-			if(hexspecial) {
+			if(sign)
+				addch(sign);
+			if(alt_hex) {
 				addch('0');
 				addch(type);
 			}
@@ -505,14 +467,15 @@ number:
 			if(ljust)
 				while(spaces--)
 					addch(' ');
+			continue;
 		}
 	}
 
 	endstr();
 	return index;
-#	undef addch
-#	undef endstr
 }
+#undef addch
+#undef endstr
 
 int snprintf(char *str, size_t size, const char *format, ...) {
 	va_list args;
