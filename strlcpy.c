@@ -1,4 +1,5 @@
 #include <sys/types.h>
+#include <string.h>
 
 /* Copies src to dst.  Unlike strncpy, copies at most size-1 plus the NULL-term.
  * Returns strlen(src). */
