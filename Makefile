@@ -15,8 +15,6 @@ uninstall:
 	rm -f $(PREFIX)/bin/puff $(PREFIX)/etc/puff.conf
 clean:
 	rm -f $(OBJS) puff.core core puff testedit.o testedit.core testedit
-pack:
-	cd .. && rm -f puff.tgz && tar zcvf puff.tgz puff/{Makefile,*.[ch],puff.conf} && cd puff
 
 puff: $(OBJS)
 	$(CC) $(CFLAGS) -o puff $(OBJS) $(LIBS)
