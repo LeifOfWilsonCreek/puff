@@ -8,7 +8,7 @@
 #include <sys/types.h>
 
 
-int myvsnprintf(char *str, size_t size, const char *format, va_list args) {
+int vsnprintf(char *str, size_t size, const char *format, va_list args) {
 #	define addch(ch) { if(index < size) str[index++] = (ch); else index++; }
 #	define endstr() { if(index < size) str[index] = 0; else str[size-1] = 0; }
 	size_t index = 0;
@@ -400,7 +400,7 @@ number:
 				}
 
 				/* Figure out the unformatted number */
-				if(inputll || width > 0) {
+				if(inputll || (width && prec)) {
 					length = 0;
 					do {
 						tmpch = inputll % base;
@@ -420,7 +420,7 @@ number:
 				sign = 0;
 
 				/* Figure out the unformatted number */
-				if(inputull || (width != 0 && prec != 0)) {
+				if(inputull || (width && prec)) {
 					length = 0;
 					do {
 						tmpch = (unsigned)(inputull % (unsigned)base);
@@ -493,12 +493,12 @@ number:
 #	undef endstr
 }
 
-int mysnprintf(char *str, size_t size, const char *format, ...) {
+int snprintf(char *str, size_t size, const char *format, ...) {
 	register va_list args;
 	register int ret;
 
 	va_start(args, format);
-	ret = myvsnprintf(str, size, format, args);
+	ret = vsnprintf(str, size, format, args);
 	va_end(args);
 	return ret;
 }
