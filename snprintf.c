@@ -1,7 +1,6 @@
-/* This must be compiled with the math library (-lm) */
+/* This must be compiled with the math library (-lm) for pow() and log() */
 
 // The e, E, g, and G types are unimplemented
-// finite() and isnan() are not done right for long doubles
 
 #include <ctype.h>
 #include <ieeefp.h>
@@ -42,7 +41,7 @@ int vsnprintf(char *str, size_t size, const char *format, va_list args) {
 flags:
 		switch(*format) {
 		case '#':       /* alternate form */
-			alt = 1;
+			alt++;  /* twice with hex means prepend 0x to zero-values */
 			format++;
 			goto flags;
 
@@ -133,7 +132,7 @@ modifiers:
 
 		case 'p':       /* pointer */
 			type = 'x';
-			alt = 1;
+			alt = 2;
 			if(prec == -1)
 				prec = sizeof(void *) * 2;
 			/* FALLTHROUGH */
@@ -141,8 +140,7 @@ modifiers:
 			capital = 1;
 			/* FALLTHROUGH */
 		case 'x':       /* unsigned hex     int */
-			if(alt)
-				alt_hex = 1;
+			alt_hex = alt;
 			if(base == -1)
 				base = 16;
 			goto integer;
@@ -230,34 +228,51 @@ modifiers:
 				else
 					input = va_arg(args, double);
 
-				if(!finite((double)input)) {
-					char buf[8];
-
-					length = 0;
-					if(isnan((double)input)) {
-						strcpy(buf, "NaN");
-						length = 3;
-					} else if(input < 1) {
-						strcpy(buf, "-Inf");
-						length = 4;
-					} else if(input > 1) {
-						strcpy(buf, "Inf");
-						length = 3;
-					} else {
-						strcpy(buf, "Error");
-						length = 5;
-					}
-
-					if(!ljust && width > length) {
-						spaces = width - length;
+				if(input != input) {
+					/* True for NaN */
+					if(!ljust && width > 3) {
+						spaces = width - 3;
 						while(spaces--)
 							addch(' ');
 					}
-					spaces = -1;
-					while(++spaces < length)
-						addch(buf[spaces]);
-					if(ljust && width > length) {
-						spaces = width - length;
+					addch('N');
+					addch('a');
+					addch('N');
+					if(ljust && width > 3) {
+						spaces = width - 3;
+						while(spaces--)
+							addch(' ');
+					}
+					continue;
+				} else if(input == 1.0 / 0.0) {
+					/* True for Inf */
+					if(!ljust && width > 3) {
+						spaces = width - 3;
+						while(spaces--)
+							addch(' ');
+					}
+					addch('I');
+					addch('n');
+					addch('f');
+					if(ljust && width > 3) {
+						spaces = width - 3;
+						while(spaces--)
+							addch(' ');
+					}
+					continue;
+				} else if(input == -1.0 / 0.0) {
+					/* True for -Inf */
+					if(!ljust && width > 4) {
+						spaces = width - 4;
+						while(spaces--)
+							addch(' ');
+					}
+					addch('-');
+					addch('I');
+					addch('n');
+					addch('f');
+					if(ljust && width > 4) {
+						spaces = width - 4;
 						while(spaces--)
 							addch(' ');
 					}
@@ -386,9 +401,15 @@ integer:
 						buf[length++] = '0';
 				} else {
 					/* POSIX says that displaying 0 with width 0
-					 * produces a zero-length number */
-					if(width)
+					 * produces a zero-length number.  BSD uses
+					 * precision for that instead.  Is my POSIX
+					 * documentation wrong? */
+					if(prec)
 						buf[length++] = '0';
+					/* zero with # does not get 0x prepended, but
+					 * zero with ## does. */
+					if(alt_hex)
+						alt_hex--;
 				}
 			} else {
 				unsigned long long input;
@@ -418,9 +439,15 @@ integer:
 						buf[length++] = '0';
 				} else {
 					/* POSIX says that displaying 0 with width 0
-					 * produces a zero-length number */
-					if(width)
+					 * produces a zero-length number.  BSD uses
+					 * precision for that instead.  Is my POSIX
+					 * documentation wrong? */
+					if(prec)
 						buf[length++] = '0';
+					/* zero with # does not get 0x prepended, but
+					 * zero with ## does. */
+					if(alt_hex)
+						alt_hex--;
 				}
 			}
 			/* sign and alt_hex are done below because they come before zero-padding */
@@ -456,6 +483,7 @@ integer:
 					addch(' ');
 			if(sign)
 				addch(sign);
+			/* Special case for prepending 0x */
 			if(alt_hex) {
 				addch('0');
 				addch(type);
