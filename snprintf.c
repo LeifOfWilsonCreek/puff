@@ -185,35 +185,42 @@ flags:
 		}
 
 		/* width */
-		if(*format >= '0' && *format <= '9') {
-			width = 0;
-			while(*format >= '0' && *format <= '9')
-				width = width * 10 + *format++ - '0';
-		} else if(*format == '*') {
+		if(*format == '*') {
+			format++;
 			width = va_arg(args, int);
 			if(width < 0) {
 				width = -width;
 				ljust = 1;
 			}
+		} else if(*format >= '0' && *format <= '9') {
+			width = 0;
+			while(*format >= '0' && *format <= '9')
+				width = width * 10 + *format++ - '0';
 		}
 
 		/* precision */
 		if(*format == '.') {
-			prec = 0;
-			while(*++format >= '0' && *format <= '9')
-				prec = prec * 10 + *format - '0';
-		} else if(*format == '*') {
-			prec = va_arg(args, int);
-		}
+			format++;
+			if(*format == '*') {
+				format++;
+				prec = va_arg(args, int);
+			} else {
+				prec = 0;
+				while(*format >= '0' && *format <= '9')
+					prec = prec * 10 + *format++ - '0';
+		}	}
 
 		/* base */
 		if(*format == '_') {
-			base = 0;
-			while(*++format >= '0' && *format <= '9')
-				base = base * 10 + *format - '0';
-		} else if(*format == '*') {
-			base = va_arg(args, int);
-		}
+			format++;
+			if(*format == '*') {
+				format++;
+				base = va_arg(args, int);
+			} else {
+				base = 0;
+				while(*format >= '0' && *format <= '9')
+					base = base * 10 + *format++ - '0';
+		}	}
 
 		/* conversion modifiers */
 modifiers:
