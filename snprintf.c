@@ -104,7 +104,6 @@ because pow() and log() can only operate on doubles.  It would cause Bad Things
 if converting from long double to double produced Inf or -Inf where log() and
 pow() are called.
 
-// XXX: fix base < 2 || base > 36
 // XXX: what about %#.0o
 
  */
@@ -133,8 +132,11 @@ pow() are called.
 int vsnprintf(char *str, size_t size, const char *format, va_list args) {
 	size_t index = 0;
 
-	/* flags */
-	char type,alt,alt_hex,ljust,plus,modifier,capital,is_signed;
+	static const char charsetu[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+	static const char charsetl[] = "0123456789abcdefghijklmnopqrstuvwxyz";
+
+	char type,alt,alt_hex,ljust,plus,modifier,is_signed;  /* flags */
+	const char *charset;
 	int width, prec, base;
 
 	format--;
@@ -150,7 +152,7 @@ int vsnprintf(char *str, size_t size, const char *format, va_list args) {
 		ljust = 0;
 		plus = 0;
 		modifier = 0;
-		capital = 0;
+		charset = charsetl;
 		is_signed = 0;
 		width = -1;
 		prec = -1;
@@ -179,7 +181,7 @@ flags:
 			goto flags;
 
 		case '^':       /* use capital character set */
-			capital = 1;
+			charset = charsetu;
 			format++;
 			goto flags;
 		}
@@ -238,18 +240,18 @@ modifiers:
 		switch(type) {
 		case 'd':       /*   signed decimal int */
 		case 'i':       /*   signed decimal int */
-			if(base < 2)
+			if(base < 2 || base > sizeof(charsetl) - 1)
 				base = 10;
 			is_signed = 1;
 			goto integer;
 
 		case 'o':       /* unsigned octal   int */
-			if(base < 2)
+			if(base < 2 || base > sizeof(charsetl) - 1)
 				base = 8;
 			goto integer;
 
 		case 'u':       /* unsigned decimal int */
-			if(base < 2)
+			if(base < 2 || base > sizeof(charsetl) - 1)
 				base = 10;
 			goto integer;
 
@@ -260,11 +262,11 @@ modifiers:
 				prec = sizeof(void *) * 2;
 			/* FALLTHROUGH */
 		case 'X':       /* unsigned hex     int */
-			capital = 1;
+			charset = charsetu;
 			/* FALLTHROUGH */
 		case 'x':       /* unsigned hex     int */
 			alt_hex = alt;
-			if(base < 2)
+			if(base < 2 || base > sizeof(charsetl) - 1)
 				base = 16;
 			goto integer;
 
@@ -294,7 +296,7 @@ modifiers:
 				if(!ljust)
 					while(spaces--)
 						addch(' ');
-				if(capital) {
+				if(charset == charsetu) {
 					while(length--)
 						addch(toupper(*tmps++));
 				} else if(alt) {
@@ -345,13 +347,7 @@ modifiers:
 				double input;
 #endif
 				int length, exp, spaces;
-				const char *charset;
 				char sign;
-
-				if(capital)
-					charset = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-				else
-					charset = "0123456789abcdefghijklmnopqrstuvwxyz";
 
 				if(modifier == 'L')
 					input = va_arg(args, long double);
@@ -416,7 +412,7 @@ modifiers:
 					sign = plus;
 				}
 
-				if(base < 2)
+				if(base < 2 || base > sizeof(charsetl) - 1)
 					base = 10;
 
 				if(prec < 0)
@@ -496,13 +492,7 @@ integer:
 		{
 			/* buf must be able to accomidate a long-long in binary, plus a little */
 			char buf[sizeof(long long) * 8 + 5], sign;
-			const char *charset;
 			int length, spaces, zeros;
-
-			if(capital)
-				charset = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-			else
-				charset = "0123456789abcdefghijklmnopqrstuvwxyz";
 
 			if(is_signed) {
 				long long input;
