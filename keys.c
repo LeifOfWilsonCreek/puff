@@ -14,7 +14,6 @@ WINDOW *filewin = NULL;
  * match it.  Escape strings are ended with -1. */
 int keys[][], definedkeys = 0;
 
-/* this will do macro support eventually */
 int kgetkey(WINDOW *win) {
 	int thiskey[10], loop, match = 1, found = 1;
 	struct stat sb;

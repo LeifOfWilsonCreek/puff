@@ -10,8 +10,8 @@
 
 
 int vsnprintf(char *str, size_t size, const char *format, va_list args) {
-#	define addch(ch) { if(index < size) str[index++] = (ch); else index++; }
-#	define endstr() { if(index < size) str[index] = 0; else str[size-1] = 0; }
+#	define addch(ch) {if(index < size) str[index++] = (ch); else index++;}
+#	define endstr() {if(index < size) str[index] = 0; else if(size) str[size-1] = 0;}
 	size_t index = 0;
 
 	/* flags */

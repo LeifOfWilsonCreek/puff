@@ -60,7 +60,15 @@ to-do:
 #include "shared.h"
 
 #define MAX_COLS    1023        /* max number of columns on a terminal */
-#define MAX_FILES   36          /* max number of files that we can open */
+#define PUFF_MAX_FILES   36          /* max number of files that we can open, including clipboard */
+
+/* These macros are a little funky.  Normally the "curfile" they reference is
+ * the global variable called "curfile", which represents what file the user is
+ * currently looking at.  Some functions have a parameter called "curfile".  In
+ * these, the macros reference that parameter.  This is because occasionally we
+ * have to do some work with a file that is not currently shown, such as when
+ * cutting to the clipboard.  This probably isn't "good practice", but I found
+ * it easier in this case. */
 
 #define NAME        finfo[curfile].name
 #define FP          finfo[curfile].fp
@@ -85,11 +93,11 @@ struct {
 	int vcursor; off_t hcursor;	/* cursor position */
 	off_t realh;			/* the real cursor position for the line */
 	int modified;			/* true if the file was modified */
-} finfo[MAX_FILES];
+} finfo[PUFF_MAX_FILES];
 
 WINDOW *statuswin, *messagewin = 0;
 int curfile;	/* -1 == no current file */
-				/* 0 == clipboard */
+		/* 0 == clipboard */
 
 extern char *optarg;
 extern int optind;
@@ -134,7 +142,7 @@ void redraw_statuswin(char *fmt, ...) {
 		} else if(curfile < 36) {
 			tmpchar = curfile + 'A' - 10;
 		} else {
-			/* Shouldn't happen */
+			/* Shouldn't happen unless PUFF_MAX_FILES gets modified. */
 			tmpchar = '!';
 		}
 		snprintf(tmpstr, sizeof(tmpstr), " %c %i/%i %i/%i %i %n        ", tmpchar, (int)OFFSET, (int)file_size(FP), TOPLINE + VCURSOR + 1, file_numlines(FP), (int)REALH + 1, &tmpint);
@@ -371,7 +379,7 @@ int openfile(int curfile, char *filename) {
 	}
 
 	/* Make sure the file isn't already open */
-	for(tmpint = 0; tmpint < MAX_FILES; tmpint++) {
+	for(tmpint = 0; tmpint < PUFF_MAX_FILES; tmpint++) {
 		if(file_fileno(finfo[tmpint].fp) == -1) continue;
 
 		if(file_stat(finfo[tmpint].fp) && new_stat.st_dev == file_stat(finfo[tmpint].fp)->st_dev && new_stat.st_ino == file_stat(finfo[tmpint].fp)->st_ino) {
@@ -1207,7 +1215,7 @@ next_signal:
 		struct stat sb;
 
 		tmpint2 = -1;
-		for(tmpint = 1; tmpint < MAX_FILES; tmpint++) {
+		for(tmpint = 1; tmpint < PUFF_MAX_FILES; tmpint++) {
 			if(finfo[tmpint].fp && finfo[tmpint].modified) {
 				if(finfo[tmpint].name[0]) {
 					if(snprintf(filename, sizeof(filename), "%s.changes", finfo[tmpint].name) >= sizeof(filename)) continue;
@@ -1265,7 +1273,7 @@ next_signal:
 		wresize(statuswin, 1, COLS);
 
 		/* Move file wins */
-		for(tmpint = 0; tmpint < MAX_FILES; tmpint++) {
+		for(tmpint = 0; tmpint < PUFF_MAX_FILES; tmpint++) {
 			if(finfo[tmpint].fp) {
 				mvwin(finfo[tmpint].win, 0, 0);
 				wresize(finfo[tmpint].win, LINES-1, COLS);
@@ -1319,9 +1327,9 @@ exit_sig:
 
 int keynew() {
 	int tmpint;
-	for(tmpint = 1; tmpint < MAX_FILES; tmpint++)
+	for(tmpint = 1; tmpint < PUFF_MAX_FILES; tmpint++)
 		if(!finfo[tmpint].fp) break;
-	if(tmpint == MAX_FILES) {
+	if(tmpint == PUFF_MAX_FILES) {
 		redraw_statuswin("Too many files open.");
 		return ERR;
 	}
@@ -1335,9 +1343,9 @@ int keyopen() {
 	int tmpint;
 	char tmpstr[MAX_COLS+1];
 
-	for(tmpint = 1; tmpint < MAX_FILES; tmpint++)
+	for(tmpint = 1; tmpint < PUFF_MAX_FILES; tmpint++)
 		if(!finfo[tmpint].fp) break;
-	if(tmpint == MAX_FILES) {
+	if(tmpint == PUFF_MAX_FILES) {
 		redraw_statuswin("Too many files open.");
 		return ERR;
 	}
@@ -1507,7 +1515,7 @@ int keyclose() {
 	*NAME = 0;
 
 	curfile = -1;
-	for(tmpint = 1; tmpint < MAX_FILES; tmpint++)
+	for(tmpint = 1; tmpint < PUFF_MAX_FILES; tmpint++)
 		if(finfo[tmpint].fp) curfile = tmpint;
 	redraw_statuswin("file");
 	return OK;
@@ -1518,7 +1526,7 @@ int keyexit() {
 	char tmpchar;
 
 	tmpint = 1;		/* exit flag */
-	for(curfile = 1; curfile < MAX_FILES; curfile++) {
+	for(curfile = 1; curfile < PUFF_MAX_FILES; curfile++) {
 		if(FP && MODIFIED) {
 			redrawwin(WIN);
 			wnoutrefresh(WIN);
@@ -1540,7 +1548,7 @@ int keyexit() {
 	}
 	if(!tmpint) return ERR;
 	doupdate();
-	for(curfile = 1; curfile < MAX_FILES; curfile++) {
+	for(curfile = 1; curfile < PUFF_MAX_FILES; curfile++) {
 		if(FP) {
 			file_close(FP);
 			FP = 0;
@@ -1606,7 +1614,7 @@ int keyfilemenu() {
 		wmove(messagewin, 0, maxx - 25);    waddstr(messagewin, "Last saved date");
 
 		tmpint = topfile - 1;
-		while(++tmpint < MAX_FILES && tmpint + 1 - topfile < maxy) {
+		while(++tmpint < PUFF_MAX_FILES && tmpint + 1 - topfile < maxy) {
 			wmove(messagewin, tmpint + 1 - topfile, 0);
 			if(tmpint < 10) key = tmpint + '0';
 			else key = tmpint + 'A' - 10;
@@ -1659,7 +1667,7 @@ int keyfilemenu() {
 
 		if(key == 1) {     /* Ctrl-A */
 			topfile += maxy - page_skip - 1;
-			if(topfile >= MAX_FILES) topfile = 0;
+			if(topfile >= PUFF_MAX_FILES) topfile = 0;
 			continue;
 		}
 		break;
@@ -2052,7 +2060,7 @@ int main(int Argc, char **Argv) {
 		}
 	}
 
-	for(tmpint = 0; tmpint < MAX_FILES; tmpint++) {
+	for(tmpint = 0; tmpint < PUFF_MAX_FILES; tmpint++) {
 		finfo[tmpint].fp = 0;
 		finfo[tmpint].win = 0;
 	}
@@ -2137,7 +2145,7 @@ int main(int Argc, char **Argv) {
 	tmpint = 0;    /* Error flag */
 	curfile = 0;
 	while(argc - optind) {
-		if(curfile == MAX_FILES - 1) {
+		if(curfile == PUFF_MAX_FILES - 1) {
 			redraw_statuswin("Too many files.");
 			break;
 		}
