@@ -1,11 +1,13 @@
 /*
 bugs:
-	make sure strncpy/strcpy/strncat/strcat aren't used, in favor of strlcpy/strlcat
 	long filename should be shortened with ... on the status line.
 	ENODEV doesn't make sense on some systems
 	Resizing the screen can leave the current line out of sight
+	Cutting should "paste" into the clipboard so the window moves properly
 
 to-do:
+	stop the cursor from being closer than N lines to the edge of the screen
+		change seekbyte() to do this...
 	+20 cmd-line option to go to line 20
 	top/bottom of file/screen
 	next-word
@@ -14,28 +16,17 @@ to-do:
 	kill marked piece
 	copy line with reverse color flash
 	[key-file] section of config file for file menu
-	try to input
-
-	line numbers
-	ctrl-c should cancel search, search-all-files, s & replace
+	search-all-files, s & replace, regex search, case insensitive
 	show mods in another color
 	cmd to pipe the marked text to a program such as lpr
-	macros
-	bookmarks
-	auto-formatting
-		C mode: colorize & indent code
-		text mode: auto-capitalize, auto-indent, auto-list-numbering, auto
-			speller, center, justify {line,para} {left/center/right/full/all}
-		configurable right margin
-		text wrap
+	auto-indent
+	center, justify {line,para} {left/center/right/full/all}
+	word wrap with configurable right margin
 	save-changes timer
 	new-line fix
 	backup old file option
-	shell prompt
-	file management
 	workspace saver to open files that were previously open
 	half-page{up,down}
-	"exchange server on the backend" ;)
 */
 
 #include <ctype.h>
@@ -60,8 +51,8 @@ to-do:
 #include "keys.h"
 #include "shared.h"
 
-#define MAX_COLS    1023        /* max number of columns on a terminal */
-#define PUFF_MAX_FILES   36          /* max number of files that we can open, including clipboard */
+#define MAX_COLS        1023    /* max number of columns on a terminal */
+#define PUFF_MAX_FILES    36    /* max number of files that we can open, including clipboard */
 
 /* These macros are a little funky.  Normally the "curfile" they reference is
  * the global variable called "curfile", which represents what file the user is
@@ -84,6 +75,7 @@ to-do:
 #define REALH       finfo[curfile].realh
 #define MODIFIED    finfo[curfile].modified
 
+/* Global variables */
 struct {
 	char name[MAXPATHLEN];		/* name of file */
 	EDITFILE *fp;			/* underlying file stream */
@@ -91,29 +83,26 @@ struct {
 	off_t offset;			/* offset of cursor position */
 	int vsize, hsize;		/* size of window -- NOT terminal */
 	int topline, leftcol;		/* what line/col the window begins on */
-	int vcursor; off_t hcursor;	/* cursor position */
+	int vcursor; off_t hcursor;	/* cursor screen position, 0-indexed */
 	off_t realh;			/* the real cursor position for the line */
 	int modified;			/* true if the file was modified */
 } finfo[PUFF_MAX_FILES];
-
-WINDOW *statuswin, *messagewin = 0;
-int curfile;	/* -1 == no current file */
-		/* 0 == clipboard */
-
+int ((**funcarray)());
 extern char *optarg;
 extern int optind;
-extern WINDOW *filewin;
-
 int argc;
 char **argv;
+WINDOW *statuswin, *messagewin = 0;
+int curfile;				/* -1 == no current file, 0 == clipboard */
 char homedir[MAXPATHLEN] = "";
 int color_term;
 int tab_size;
 int page_skip;
 int save_clipboard;
 int lock_files;
-int ((**funcarray)());
+int window_margin;	/* The minimum number of lines to keep on the scree above and below the cursor */
 
+/* Some function prototypes that can't be declared before they are used. */
 int keyleft();
 int keyright();
 
@@ -126,7 +115,7 @@ void redraw_statuswin(char *fmt, ...) {
 	int max_x, max_y, tmpint;
 
 	getmaxyx(statuswin, max_y, max_x);
-	if(!fmt && age < time(NULL) - 5) {
+	if(!fmt && difftime(time(NULL), age) > 5) {
 		fmt = "file";
 		if(curfile != -1 && FP) file_cleanup(FP);
 	}
@@ -198,7 +187,7 @@ void redraw_statuswin(char *fmt, ...) {
 /* redisplay a line.  If term_line == -1, redisplay the current line.
  * We start by knowing TOPLINE, [VH]CURSOR, [VH]SIZE and a tenative LEFTCOL,
  * and calculate OFFSET. */
-int display_line(int curfile, int term_line) {
+void display_line(int curfile, int term_line) {
 	int vcurs, tab, tmpint, storepos, carryover = 0;
 	off_t hcurs, leftcol, pos, off;
 
@@ -222,7 +211,7 @@ int display_line(int curfile, int term_line) {
 	wclrtoeol(WIN);
 
 	tab = tab_size;
-	if((off = file_findline(FP, TOPLINE + vcurs)) < 0) return ERR;
+	if((off = file_findline(FP, TOPLINE + vcurs)) < 0) return;
 	pos = 0;
 	while(pos < leftcol) {
 		tmpint = file_getc(FP, off);
@@ -301,7 +290,7 @@ int display_line(int curfile, int term_line) {
 		REALH = leftcol + storepos;
 		wmove(WIN, vcurs, storepos);
 	}
-	return OK;
+	return;
 }
 
 /* redisplay the whole file */
@@ -309,36 +298,6 @@ void display_file(int curfile) {
 	int row;
 	for(row = 0; row < VSIZE; row++) display_line(curfile, row);
 	return;
-}
-
-int scrollup(int curfile) {
-	if(curfile < 0) return ERR;
-	if(TOPLINE == 0) return ERR;
-	display_line(curfile, VCURSOR);
-
-	scrollok(finfo[curfile].win, TRUE);
-	wscrl(finfo[curfile].win, -1);
-	scrollok(finfo[curfile].win, FALSE);
-	TOPLINE--;
-
-	display_line(curfile, 0);
-
-	return OK;
-}
-
-int scrolldown(int curfile) {
-	if(curfile < 0) return ERR;
-	if(file_findline(FP, TOPLINE + VSIZE) == -1) return ERR;
-	display_line(curfile, VCURSOR);
-
-	scrollok(finfo[curfile].win, TRUE);
-	wscrl(finfo[curfile].win, 1);
-	scrollok(finfo[curfile].win, FALSE);
-	TOPLINE++;
-
-	display_line(curfile, VSIZE-1);
-
-	return OK;
 }
 
 int newfile(int curfile, char *filename) {
@@ -463,150 +422,6 @@ int openfile(int curfile, char *filename) {
 	}
 
 	redraw_statuswin("file");
-	return OK;
-}
-
-int seekbyte(int curfile, off_t offset) {
-	int linenum;
-	int oldtopline;
-
-	oldtopline = TOPLINE;
-	if(offset < 0) offset = 0;
-	linenum = file_findoff(FP, offset);
-	if(linenum == -1) {
-		offset = file_size(FP);
-		linenum = file_numlines(FP) - 1;
-	}
-	TOPLINE = linenum - VCURSOR;
-	if(TOPLINE < 0) {
-		VCURSOR = linenum;
-		TOPLINE = 0;
-	}
-	/* now we're on the right line.  Find the right horiz position */
-
-	HCURSOR = REALH = 0;
-	display_line(curfile, -1);	/* get accurate offset */
-	REALH = offset - OFFSET;	/* approximate horiz position */
-	display_line(curfile, -1);
-	while(abs(OFFSET - offset) > tab_size * 3) {
-		/* same as: while(OFFSET < offset - tab_size * 3 ||
-		 * OFFSET > offset + tab_size * 3) { */
-
-		/* speed optimization - get close quickly, not really necessary, but
-		 * EOL can be -really- slow without this */
-		HCURSOR += offset - OFFSET;
-		display_line(curfile, -1);
-		REALH = HCURSOR;
-	}
-	while(OFFSET != offset) {
-		if(OFFSET < offset) {	/* exact horiz position */
-			if(keyright() == ERR) break;
-		} else {
-			if(keyleft() == ERR) break;
-		}
-		display_line(curfile, -1);
-	}
-
-//	if(TOPLINE - oldtopline < VSIZE - HCURSOR) {
-//		HCURSOR += TOPLINE - oldtopline;
-//		TOPLINE = oldtopline;
-//	}
-
-	return OK;
-}
-
-int keybol() {
-	if(curfile == -1) return ERR;
-	HCURSOR = 0;
-	return OK;
-}
-
-int keyeol() {
-	off_t offset;
-
-	if(curfile == -1) return ERR;
-	offset = file_findline(FP, TOPLINE + VCURSOR + 1);
-	if(offset == -1) offset = file_size(FP);
-	else if(offset != 0) offset--;
-
-	seekbyte(curfile, offset);
-	return OK;
-}
-
-int keyup() {
-	if(curfile == -1) return ERR;
-	/* move current line back to beginning of line */
-	display_line(curfile, VCURSOR);
-
-	if(VCURSOR > 0) {
-		/* no need to scroll */
-		VCURSOR--;
-		return OK;
-	}
-
-	return scrollup(curfile);
-}
-
-int keydown() {
-	if(curfile == -1) return ERR;
-
-	/* move current line back to beginning of line */
-	display_line(curfile, VCURSOR);
-
-	if(file_findline(FP, TOPLINE + VCURSOR + 1) == -1)
-		return ERR;	/* can't scroll down - EOF */
-	if(VCURSOR < finfo[curfile].vsize-1) {
-		/* no need to scroll */
-		VCURSOR++;
-		return OK;
-	}
-
-	return scrolldown(curfile);
-}
-
-int keyleft() {
-	int tmpint;
-	if(curfile == -1) return ERR;
-	HCURSOR = REALH;
-	if(HCURSOR == 0) {
-		if(keyup() == ERR) return ERR;
-		if(keyeol() == ERR) return ERR;
-		return OK;
-	}
-	tmpint = file_getc(FP, OFFSET - 1);
-	if(tmpint == -1) {
-		return ERR;
-	} else if(tmpint == '\t') {
-		HCURSOR--;
-		display_line(curfile, -1);	/* calculate REALH */
-		HCURSOR = REALH;
-	} else if(tmpint < 32 || tmpint == 127) {
-		/* ^X style character */
-		HCURSOR -= 2;
-	} else {
-		HCURSOR--;
-	}
-	return OK;
-}
-
-int keyright() {
-	int tmpint;
-	if(curfile == -1) return ERR;
-	tmpint = file_getc(FP, OFFSET);
-	HCURSOR = REALH;
-	if(tmpint == -1) {
-		return ERR;
-	} else if(tmpint == '\n') {
-		if(keydown() == ERR) return ERR;
-		HCURSOR = 0;
-	} else if(tmpint == '\t') {
-		HCURSOR += tab_size - HCURSOR % tab_size;
-	} else if(tmpint < 32 || tmpint == 127) {
-		/* ^X style character */
-		HCURSOR += 2;
-	} else {
-		HCURSOR++;
-	}
 	return OK;
 }
 
@@ -1094,6 +909,8 @@ void configure_file(char *filename) {
 					lock_files = strtol(ptr + 11, 0, 0);
 				} else if(!strncasecmp(ptr, "color_term=", 11)) {
 					color_term = strtol(ptr + 11, 0, 0);
+				} else if(!strncasecmp(ptr, "window_margin=", 14)) {
+					window_margin = strtol(ptr + 14, 0, 0);
 				}
 			}
 		}
@@ -1111,6 +928,7 @@ int configure() {
 	page_skip = -1;
 	save_clipboard = -1;
 	lock_files = -1;
+	window_margin = 5;
 	configure_file("/etc/puff.conf");
 	strlcpy(tmpstr, homedir, sizeof(tmpstr));
 	strlcat(tmpstr, "/.puff.conf", sizeof(tmpstr));
@@ -1296,11 +1114,6 @@ next_signal:
 			redrawwin(messagewin);
 			wnoutrefresh(messagewin);
 		}
-		if(filewin) {
-			wresize(filewin, LINES - 1, COLS);
-			redrawwin(filewin);
-			wnoutrefresh(filewin);
-		}
 		doupdate();
 		wrefresh(curscr);
 #endif
@@ -1324,6 +1137,424 @@ exit_sig:
 		goto next_signal;
 	}
 	raisedsignal = 0;
+}
+
+int seekbyte(int curfile, off_t offset) {
+	int linenum; /* 0-based index */
+	int oldtopline; /* For scrolling */
+	int loop;
+
+	/* Don't seek to a negative offset. */
+	if(offset < 0) return ERR;
+	linenum = file_findoff(FP, offset);
+	if(linenum == -1) return ERR;
+
+	oldtopline = TOPLINE;
+
+	/* If the cursor is out of bounds, fix it. */
+	if(VCURSOR < window_margin)
+		VCURSOR = window_margin;
+	else if(VCURSOR > VSIZE - window_margin - 1)
+		VCURSOR = VSIZE - window_margin - 1;
+
+	if(linenum < TOPLINE || linenum >= TOPLINE + VSIZE) {
+		/* It's off the screen, don't move the cursor. */
+		TOPLINE = linenum - VCURSOR;
+	} else if(linenum < TOPLINE + window_margin) {
+		/* The target is between the top of the window and the upper
+		 * window margin. */
+		VCURSOR = window_margin;
+		TOPLINE = linenum - VCURSOR;
+	} else if(linenum > TOPLINE + VSIZE - window_margin - 1) {
+		/* The target is between the bottom of the window and the lower
+		 * window margin. */
+		VCURSOR = VSIZE - window_margin - 1;
+		TOPLINE = linenum - VCURSOR;
+	} else {
+		/* Just move the cursor. */
+		VCURSOR = linenum - TOPLINE;
+	}
+
+	if(TOPLINE < 0) {
+		/* This might require the cursor to move above the minimum VCURSOR. */
+		TOPLINE = 0;
+		VCURSOR = linenum;
+	}
+
+	if(abs(TOPLINE - oldtopline) < VSIZE) {
+		/* Scroll */
+		scrollok(finfo[curfile].win, TRUE);
+		wscrl(finfo[curfile].win, TOPLINE - oldtopline);
+		scrollok(finfo[curfile].win, FALSE);
+
+		/* Redraw lines that appeared because of the scroll. */
+		if(TOPLINE < oldtopline) {
+			/* Scrolled up - redraw lines at the top of the screen. */
+			loop = oldtopline - TOPLINE;
+			while(loop--)
+				display_line(curfile, loop);
+		} else if(TOPLINE > oldtopline) {
+			/* Scrolled down - redraw lines at the bottom of the screen. */
+			loop = TOPLINE - oldtopline;
+			while(loop--)
+				display_line(curfile, VSIZE - loop - 1);
+		}
+	} else {
+		/* Complete redraw if all the lines from before scrolled off. */
+		display_file(curfile);
+	}
+
+	/* Now we're on the right line.  Find the right horizontal position. */
+
+	HCURSOR = REALH = 0;
+	display_line(curfile, -1);	/* get accurate offset */
+	REALH = offset - OFFSET;	/* approximate horiz position */
+	display_line(curfile, -1);
+	while(abs(OFFSET - offset) > tab_size * 3) {
+		/* same as: while(OFFSET < offset - tab_size * 3 ||
+		 * OFFSET > offset + tab_size * 3) { */
+
+		/* speed optimization - get close quickly, not really necessary, but
+		 * EOL can be -really- slow without this */
+		HCURSOR += offset - OFFSET;
+		display_line(curfile, -1);
+		REALH = HCURSOR;
+	}
+	while(OFFSET != offset) {
+		if(OFFSET < offset) {	/* exact horiz position */
+			if(keyright() == ERR) break;
+		} else {
+			if(keyleft() == ERR) break;
+		}
+		display_line(curfile, -1);
+	}
+
+	return OK;
+}
+
+int keynothing() {
+	return OK;
+}
+
+int keybol() {
+	if(curfile == -1) return ERR;
+	HCURSOR = 0;
+	return OK;
+}
+
+int keyeol() {
+	off_t offset;
+
+	if(curfile == -1) return ERR;
+	offset = file_findline(FP, TOPLINE + VCURSOR + 1);
+	if(offset == -1) offset = file_size(FP);
+	else if(offset != 0) offset--;
+
+	seekbyte(curfile, offset);
+	return OK;
+}
+
+int keyup() {
+	if(curfile == -1) return ERR;
+	display_line(curfile, VCURSOR);		/* move current line back to beginning of line */
+
+	if(VCURSOR > window_margin || TOPLINE == 0) {
+		if(VCURSOR == 0) return ERR;	/* don't scroll past the top of the document */
+		/* no need to scroll */
+		VCURSOR--;
+		return OK;
+	}
+
+	/* Scroll Up */
+	scrollok(finfo[curfile].win, TRUE);
+	wscrl(finfo[curfile].win, -1);
+	scrollok(finfo[curfile].win, FALSE);
+	TOPLINE--;
+
+	display_line(curfile, 0);	/* Redraw the line that just appeared */
+	return OK;
+}
+
+int keydown() {
+	if(curfile == -1) return ERR;
+	display_line(curfile, VCURSOR);		/* move current line back to beginning of line */
+
+	if(file_findline(FP, TOPLINE + VCURSOR + 1) == -1)
+		return ERR;	/* can't scroll down - EOF */
+
+	if(VCURSOR < VSIZE - window_margin - 1) {
+		/* no need to scroll */
+		VCURSOR++;
+		return OK;
+	}
+
+	/* Scroll Down */
+	scrollok(finfo[curfile].win, TRUE);
+	wscrl(finfo[curfile].win, 1);
+	scrollok(finfo[curfile].win, FALSE);
+	TOPLINE++;
+
+	display_line(curfile, VSIZE - 1);
+	return OK;
+}
+
+int keyleft() {
+	int tmpint;
+
+	/* HCURSOR stores where the cursor wants to be, and REALH stores
+	 * where the cursor actually is.  REALH is displayed on the status
+	 * line.  display_line gets where to put the cursor from HCURSOR and
+	 * updates REALH. */
+	if(curfile == -1) return ERR;
+	HCURSOR = REALH;
+	if(HCURSOR == 0) {
+		if(keyup() == ERR || keyeol() == ERR) return ERR;
+		return OK;
+	}
+	tmpint = file_getc(FP, OFFSET - 1);
+	if(tmpint == -1)
+		return ERR;
+	if(tmpint == '\t') {
+		HCURSOR--;
+		display_line(curfile, -1);	/* calculate REALH */
+		HCURSOR = REALH;
+		return OK;
+	}
+	if(tmpint < 32 || tmpint == 127) {
+		/* ^X style character */
+		HCURSOR -= 2;
+		return OK;
+	}
+	HCURSOR--;
+	return OK;
+}
+
+int keyright() {
+	int tmpint;
+
+	if(curfile == -1) return ERR;
+	HCURSOR = REALH;
+	tmpint = file_getc(FP, OFFSET);
+	if(tmpint == -1)
+		return ERR;
+	if(tmpint == '\n') {
+		if(keydown() == ERR || keybol() == ERR) return ERR;
+		return OK;
+	}
+	if(tmpint == '\t') {
+		HCURSOR += tab_size - HCURSOR % tab_size;
+		return OK;
+	}
+	if(tmpint < 32 || tmpint == 127) {
+		/* ^X style character */
+		HCURSOR += 2;
+		return OK;
+	}
+	HCURSOR++;
+	return OK;
+}
+
+int keykillbol() {
+	off_t tmpoff, tmpoff2;
+	int tmpint;
+
+	if(curfile == -1) return ERR;
+	tmpoff = file_findline(FP, TOPLINE + VCURSOR); /* beginning of cut */
+	tmpoff2 = OFFSET; /* end of cut */
+	if(tmpoff2 < 0) tmpoff2 = file_size(FP);
+	tmpint = tmpoff2 - tmpoff;	/* translation: size = end - begin */
+	file_delete(FP, tmpoff, tmpint);
+	display_file(curfile);
+	HCURSOR = REALH = 0;
+	MODIFIED = 1;
+	return OK;
+}
+
+int keykilleol() {
+	off_t tmpoff, tmpoff2;
+	int tmpint;
+
+	if(curfile == -1) return ERR;
+	tmpoff = OFFSET; /* beginning of cut */
+	tmpoff2 = file_findline(FP, TOPLINE + VCURSOR + 1) - 1; /* end of cut */
+	if(tmpoff2 < 0) tmpoff2 = file_size(FP);
+	tmpint = tmpoff2 - tmpoff;	/* translation: size = end - begin */
+	file_delete(FP, tmpoff, tmpint);
+	display_file(curfile);
+	MODIFIED = 1;
+	return OK;
+}
+
+int keyppage() {
+	if(curfile == -1) return ERR;
+	display_line(curfile, VCURSOR);
+	if(TOPLINE == 0) {
+		VCURSOR = 0;
+		HCURSOR = 0;
+		return ERR;
+	}
+	TOPLINE -= VSIZE - page_skip;
+	if(TOPLINE < 0) TOPLINE = 0;
+	display_file(curfile);
+	return OK;
+}
+
+int keynpage() {
+	if(curfile == -1) return ERR;
+	display_line(curfile, VCURSOR);
+	if(file_findline(FP, TOPLINE + VSIZE - page_skip) == -1) {
+		VCURSOR = file_numlines(FP) - TOPLINE - 1;
+		keyeol();
+		return ERR;
+	}
+	TOPLINE += VSIZE - page_skip;
+	if(file_findline(FP, TOPLINE + VCURSOR) == -1) {
+		VCURSOR = file_numlines(FP) - TOPLINE - 1;
+		keyeol();
+	}
+	display_file(curfile);
+	return OK;
+}
+
+int keybackspace() {
+	int tmpint;
+	off_t tmpoff;
+
+	if(curfile == -1) return ERR;
+	if(OFFSET == 0) return ERR;
+	HCURSOR = REALH;
+	tmpoff = OFFSET - 1;
+	if(HCURSOR) tmpint = 0; else tmpint = 1;
+	if(keyleft() == ERR) return ERR;
+	if(file_delete(FP, tmpoff, 1) != 1)
+		return ERR;
+	finfo[curfile].modified = 1;
+	if(tmpint) display_file(curfile);
+	return OK;
+}
+
+int keydelete() {
+	int tmpint;
+
+	if(curfile == -1) return ERR;
+	HCURSOR = REALH;
+	if(file_getc(FP, OFFSET) == '\n') tmpint = 1; else tmpint = 0;
+	if(file_delete(FP, OFFSET, 1) != 1)
+		return ERR;
+	finfo[curfile].modified = 1;
+	if(tmpint) display_file(curfile);
+	return OK;
+}
+
+int keyenter() {
+	if(curfile == -1) return ERR;
+	HCURSOR = REALH;
+	if(file_insert(FP, OFFSET, 1, "\n") != 1) {
+		redraw_statuswin("Internal error:  %s", strerror(errno));
+		return ERR;
+	}
+	HCURSOR = 0;
+	keydown();
+	display_file(curfile);
+	finfo[curfile].modified = 1;
+	return OK;
+}
+
+int keyspecial() {
+	char tmpstr[MAX_COLS+1];
+	int tmpint;
+
+	if(curfile == -1) return ERR;
+	*tmpstr = 0;
+	redraw_statuswin("Enter ASCII code:  ");
+	if(kgetstr(statuswin, tmpstr, 5, "number") == ERR || !*tmpstr) {
+		redraw_statuswin("file");
+		return ERR;
+	}
+	tmpint = strtol(tmpstr, 0, 0);
+	HCURSOR = REALH;
+	if(file_insert(FP, OFFSET, 1, &tmpint) != 1) {
+		redraw_statuswin("Internal error:  %s", strerror(errno));
+		return ERR;
+	}
+	keyright();
+	finfo[curfile].modified = 1;
+	redraw_statuswin("file");
+	return OK;
+}
+
+int keyseekline() {
+	int tmpint;
+	char tmpstr[MAX_COLS+1];
+	off_t tmpoff;
+
+	if(curfile == -1) return ERR;
+	redraw_statuswin("Enter line:  ");
+	tmpstr[0] = 0;
+	if(kgetstr(statuswin, tmpstr, 10, "number") == ERR || !tmpstr[0]) {
+		redraw_statuswin("file");
+		return ERR;
+	}
+	tmpint = strtol(tmpstr, NULL, 0) - 1;
+	if(tmpint < 0) tmpint = 0;
+	tmpoff = file_findline(FP, tmpint);
+	if(tmpoff == -1) tmpoff = file_findline(FP, file_numlines(FP) - 1);
+	if(tmpoff == -1) {
+		redraw_statuswin("Error finding offset - Shouldn't happen.");
+		return ERR;
+	}
+	seekbyte(curfile, tmpoff);
+	redraw_statuswin("file");
+	return OK;
+}
+
+int keyseekbyte() {
+	char tmpstr[MAX_COLS+1];
+	off_t tmpoff;
+
+	if(curfile == -1) return ERR;
+	redraw_statuswin("Enter offset:  ");
+	tmpstr[0] = 0;
+	if(kgetstr(statuswin, tmpstr, 19, "number") == ERR || !*tmpstr) {
+		redraw_statuswin("file");
+		return ERR;
+	}
+	tmpoff = strtol(tmpstr, NULL, 0);
+	seekbyte(curfile, tmpoff);
+	redraw_statuswin("file");
+	return OK;
+}
+
+int keysearch() {
+	static char lastsearch[MAX_COLS+1] = "";
+	char tmpstr[MAX_COLS+1];
+	int tmpint;
+	off_t tmpoff;
+
+	if(curfile == -1) return ERR;
+	redraw_statuswin("Search for:  ");
+	strcpy(tmpstr, lastsearch);
+	if(kgetstr(statuswin, tmpstr, sizeof(tmpstr), "search") == ERR) {
+		redraw_statuswin("file");
+		return ERR;
+	}
+	if(!*tmpstr) strcpy(tmpstr, lastsearch);
+	else strcpy(lastsearch, tmpstr);
+	redraw_statuswin("Searching...");
+	tmpint = strlen(tmpstr);
+	tmpoff = file_search(FP, tmpstr, tmpint, OFFSET+1, file_size(FP), 0);
+	redraw_statuswin("file");
+	if(tmpoff == -1) {
+		redraw_statuswin("Search wrapped...");
+		tmpoff = file_search(FP, tmpstr, tmpint, 0, OFFSET + tmpint, 0);
+		if(tmpoff != -1) redraw_statuswin("Search wrapped");
+	}
+	if(tmpoff == -1) {
+		redraw_statuswin("Not found");
+		return ERR;
+	}
+	seekbyte(curfile, tmpoff);
+	return OK;
 }
 
 int keynew() {
@@ -1657,6 +1888,7 @@ int keyfilemenu() {
 		redraw_statuswin("^N=New, ^O=Open, ^C=Close, ^S=Save, ^A=More, 0-9, A-Z=Switch:  ");
 		wclrtoeol(statuswin);
 		while((key = wgetch(statuswin)) == ERR) {
+// This isn't right!
 			if(fstat(STDIN_FILENO, &sb)) {
 				werase(messagewin);
 				wnoutrefresh(messagewin);
@@ -1706,81 +1938,6 @@ int keyfilemenu() {
 	return OK;
 }
 
-int keyseekline() {
-	int tmpint;
-	char tmpstr[MAX_COLS+1];
-
-	if(curfile == -1) return ERR;
-	redraw_statuswin("Enter line:  ");
-	tmpstr[0] = 0;
-	if(kgetstr(statuswin, tmpstr, 10, "number") == ERR || !tmpstr) {
-		redraw_statuswin("file");
-		return ERR;
-	}
-	tmpint = strtol(tmpstr, NULL, 0) - 1;
-	if(tmpint == -1) tmpint = 0;
-	if(file_findline(FP, tmpint) == -1) tmpint = file_numlines(FP) - 1;
-	TOPLINE = tmpint - VCURSOR;
-	if(TOPLINE < 0) {
-		VCURSOR = tmpint;
-		TOPLINE = 0;
-	}
-	display_file(curfile);
-	redraw_statuswin("file");
-	return OK;
-}
-
-int keyseekbyte() {
-	char tmpstr[MAX_COLS+1];
-	off_t tmpoff;
-
-	if(curfile == -1) return ERR;
-	redraw_statuswin("Enter offset:  ");
-	tmpstr[0] = 0;
-	if(kgetstr(statuswin, tmpstr, 19, "number") == ERR || !*tmpstr) {
-		redraw_statuswin("file");
-		return ERR;
-	}
-	tmpoff = strtol(tmpstr, NULL, 0);
-	seekbyte(curfile, tmpoff);
-	display_file(curfile);
-	redraw_statuswin("file");
-	return OK;
-}
-
-int keysearch() {
-	static char lastsearch[MAX_COLS+1] = "";
-	char tmpstr[MAX_COLS+1];
-	int tmpint;
-	off_t tmpoff;
-
-	if(curfile == -1) return ERR;
-	redraw_statuswin("Search for:  ");
-	strcpy(tmpstr, lastsearch);
-	if(kgetstr(statuswin, tmpstr, sizeof(tmpstr), "search") == ERR) {
-		redraw_statuswin("file");
-		return ERR;
-	}
-	if(!*tmpstr) strcpy(tmpstr, lastsearch);
-	else strcpy(lastsearch, tmpstr);
-	redraw_statuswin("Searching...");
-	tmpint = strlen(tmpstr);
-	tmpoff = file_search(FP, tmpstr, tmpint, OFFSET+1, file_size(FP), 0);
-	redraw_statuswin("file");
-	if(tmpoff == -1) {
-		redraw_statuswin("Search wrapped...");
-		tmpoff = file_search(FP, tmpstr, tmpint, 0, OFFSET + tmpint, 0);
-		if(tmpoff != -1) redraw_statuswin("Search wrapped");
-	}
-	if(tmpoff == -1) {
-		redraw_statuswin("Not found");
-		return ERR;
-	}
-	seekbyte(curfile, tmpoff);
-	display_file(curfile);
-	return OK;
-}
-
 int keykill() {
 	off_t tmpoff, tmpoff2;
 	int tmpint;
@@ -1797,37 +1954,6 @@ int keykill() {
 	return OK;
 }
 
-int keykillbol() {
-	off_t tmpoff, tmpoff2;
-	int tmpint;
-
-	if(curfile == -1) return ERR;
-	tmpoff = file_findline(FP, TOPLINE + VCURSOR); /* beginning of cut */
-	tmpoff2 = OFFSET; /* end of cut */
-	if(tmpoff2 < 0) tmpoff2 = file_size(FP);
-	tmpint = tmpoff2 - tmpoff;	/* translation: size = end - begin */
-	file_delete(FP, tmpoff, tmpint);
-	display_file(curfile);
-	HCURSOR = REALH = 0;
-	MODIFIED = 1;
-	return OK;
-}
-
-int keykilleol() {
-	off_t tmpoff, tmpoff2;
-	int tmpint;
-
-	if(curfile == -1) return ERR;
-	tmpoff = OFFSET; /* beginning of cut */
-	tmpoff2 = file_findline(FP, TOPLINE + VCURSOR + 1) - 1; /* end of cut */
-	if(tmpoff2 < 0) tmpoff2 = file_size(FP);
-	tmpint = tmpoff2 - tmpoff;	/* translation: size = end - begin */
-	file_delete(FP, tmpoff, tmpint);
-	display_file(curfile);
-	MODIFIED = 1;
-	return OK;
-}
-
 int keycut() {
 	off_t tmpoff, tmpoff2;
 	int tmpint;
@@ -1838,10 +1964,12 @@ int keycut() {
 	tmpoff2 = file_findline(FP, TOPLINE + VCURSOR + 1); /* end of cut */
 	if(tmpoff2 == -1) tmpoff2 = file_size(FP);
 	tmpint = tmpoff2 - tmpoff;	/* translation: size = end - begin */
-	if(tmpint < 0) return ERR;
-	if(curfile == 0) {	/* cutting from the clipboard deletes a line */
-		file_delete(FP, tmpoff, tmpint);
-		display_file(0);
+	if(tmpint < 0) {
+		redraw_statuswin("tmpint < 0 - Shouldn't happen.");
+		return ERR;
+	}
+	if(curfile == 0) {
+		redraw_statuswin("Don't cut from the clipboard.");
 		return ERR;
 	}
 	if(!(ptr = malloc(tmpint))) {
@@ -1900,108 +2028,6 @@ int keyclearclip() {
 	finfo[0].offset = 0;
 	finfo[0].modified = 0;
 	display_file(0);
-	return OK;
-}
-
-int keyppage() {
-	if(curfile == -1) return ERR;
-	display_line(curfile, VCURSOR);
-	if(TOPLINE == 0) {
-		VCURSOR = 0;
-		HCURSOR = 0;
-		return ERR;
-	}
-	TOPLINE -= VSIZE - page_skip;
-	if(TOPLINE < 0) TOPLINE = 0;
-	display_file(curfile);
-	return OK;
-}
-
-int keynpage() {
-	if(curfile == -1) return ERR;
-	display_line(curfile, VCURSOR);
-	if(file_findline(FP, TOPLINE + VSIZE - page_skip) == -1) {
-		VCURSOR = file_numlines(FP) - TOPLINE - 1;
-		keyeol();
-		return ERR;
-	}
-	TOPLINE += VSIZE - page_skip;
-	if(file_findline(FP, TOPLINE + VCURSOR) == -1) {
-		VCURSOR = file_numlines(FP) - TOPLINE - 1;
-		keyeol();
-	}
-	display_file(curfile);
-	return OK;
-}
-
-int keybackspace() {
-	int tmpint;
-	off_t tmpoff;
-
-	if(curfile == -1) return ERR;
-	if(OFFSET == 0) return ERR;
-	HCURSOR = REALH;
-	tmpoff = OFFSET - 1;
-	if(HCURSOR) tmpint = 0; else tmpint = 1;
-	if(keyleft() == ERR) return ERR;
-	if(file_delete(FP, tmpoff, 1) != 1)
-		return ERR;
-	finfo[curfile].modified = 1;
-	if(tmpint) display_file(curfile);
-	return OK;
-}
-
-int keydelete() {
-	int tmpint;
-
-	if(curfile == -1) return ERR;
-	HCURSOR = REALH;
-	if(file_getc(FP, OFFSET) == '\n') tmpint = 1; else tmpint = 0;
-	if(file_delete(FP, OFFSET, 1) != 1)
-		return ERR;
-	finfo[curfile].modified = 1;
-	if(tmpint) display_file(curfile);
-	return OK;
-}
-
-int keyenter() {
-	if(curfile == -1) return ERR;
-	HCURSOR = REALH;
-	if(file_insert(FP, OFFSET, 1, "\n") != 1) {
-		redraw_statuswin("Internal error:  %s", strerror(errno));
-		return ERR;
-	}
-	HCURSOR = 0;
-	keydown();
-	display_file(curfile);
-	finfo[curfile].modified = 1;
-	return OK;
-}
-
-int keyspecial() {
-	char tmpstr[MAX_COLS+1];
-	int tmpint;
-
-	if(curfile == -1) return ERR;
-	*tmpstr = 0;
-	redraw_statuswin("Enter ASCII code:  ");
-	if(kgetstr(statuswin, tmpstr, 5, "number") == ERR || !*tmpstr) {
-		redraw_statuswin("file");
-		return ERR;
-	}
-	tmpint = strtol(tmpstr, 0, 0);
-	HCURSOR = REALH;
-	if(file_insert(FP, OFFSET, 1, &tmpint) != 1) {
-		redraw_statuswin("Internal error:  %s", strerror(errno));
-		return ERR;
-	}
-	keyright();
-	finfo[curfile].modified = 1;
-	redraw_statuswin("file");
-	return OK;
-}
-
-int keynothing() {
 	return OK;
 }
 
@@ -2180,7 +2206,7 @@ int main(int Argc, char **Argv) {
 	while(1) {
 		if(curfile != -1) display_line(curfile, -1);
 		redraw_statuswin(0);
-		if(curfile != -1) { redrawwin(WIN); wnoutrefresh(WIN); }
+		if(curfile != -1) {redrawwin(WIN); wnoutrefresh(WIN);}
 		doupdate();
 
 // This isn't right!
