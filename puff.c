@@ -98,7 +98,7 @@ int tab_size;
 int page_skip;
 int save_clipboard;
 int lock_files;
-int window_margin;	/* The minimum number of lines to keep on the scree above and below the cursor */
+int window_margin;	/* The minimum number of lines to keep on the screen above and below the cursor */
 
 /* Some function prototypes that can't be declared before they are used. */
 int keyleft();
@@ -1004,7 +1004,7 @@ int configure() {
 
 	if(tab_size < 1 || tab_size > 20) tab_size = 8;
 	if(page_skip < 0 || page_skip > LINES) page_skip = 1;
-	if(window_margin < 0 || window_margin > LINES / 2) window_margin = LINES / 5;
+	if(window_margin < 0 || window_margin > LINES / 2) window_margin = 0;
 
 	return OK;
 }
@@ -2181,7 +2181,7 @@ int main(int Argc, char **Argv) {
 		switch(tmpint) {
 			case '?':
 			default:
-				0;
+				;
 		}
 	}
 
