@@ -345,12 +345,13 @@ modifiers:
 			continue;
 
 		case 'f':
+#ifdef DOUBLE
 			{
 #ifdef LONG_DOUBLE
 				long double input;
-#else
+#else  /* ifdef LONG_DOUBLE */
 				double input;
-#endif
+#endif  /* ifdef LONG_DOUBLE */
 				int length, exp, spaces;
 				char sign;
 
@@ -487,6 +488,31 @@ modifiers:
 					while(spaces--)
 						addch(' ');
 			}
+#else  /* ifdef DOUBLE */
+			{
+				int spaces;
+
+				/* Skip over the arg */
+				if(modifier == 'L')
+					(void)va_arg(args, long double);
+				else
+					(void)va_arg(args, double);
+
+				/* Add an error indicator */
+				if(!ljust && width > 3) {
+					spaces = width - 3;
+					while(spaces--)
+						addch(' ');
+				}
+				addch('?');
+				addch('?');
+				addch('?');
+				if(ljust && width > 3) {
+					spaces = width - 3;
+					while(spaces--)
+						addch(' ');
+			}	}
+#endif  /* ifdef DOUBLE */
 			continue;
 		default:
 			addch('?');
