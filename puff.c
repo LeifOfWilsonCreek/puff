@@ -1577,7 +1577,11 @@ int keysearch() {
 	redraw_statuswin("Search for:  ");
 	strcpy(new_search.text, old_search.text);
 	if(kgetstr(statuswin, new_search.text, sizeof(new_search.text), "search") == ERR) goto cancel;
-	if(! new_search.text[0]) return keysearchnext();
+	if(! new_search.text[0]) {
+		if(old_search.text[0]) return keysearchnext();
+		redraw_statuswin("Blank");
+		return ERR;
+	}
 
 	redraw_statuswin("Case sensitive (yes/no/Sorta)?  ");
 	new_search.sensitive = 'S';
