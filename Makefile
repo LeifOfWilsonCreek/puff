@@ -19,7 +19,7 @@ clean:
 
 puff: $(OBJS)
 	$(CC) $(CFLAGS) -o puff $(OBJS) $(LIBS)
-shared.o: shared.c shared.h strlcat.c strlcpy.c snprintf.c
+shared.o: shared.c shared.h strlcat.c strlcpy.c
 editfile.o: editfile.c editfile.h
 keys.o: keys.c keys.h shared.h
 puff.o: puff.c $(HEAD)

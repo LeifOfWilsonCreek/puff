@@ -701,7 +701,7 @@ Extend:
 			}
 			thismod->data[offset - diff - thismod->begin] = *(unsigned char *)buf;
 			offset++;
-			((unsigned char *)buf)++;
+			{ int tmp = (int)buf; tmp++; buf = (typeof(buf))tmp; }  // increments buf.  *sigh* "use of cast expressions as lvalues is deprecated"
 		} else if(action == FILE_DELETE) {
 			memmove(thismod->data + offset - diff - thismod->begin, thismod->data + offset - diff - thismod->begin + 1, thismod->begin + diff + thismod->new_size - offset - 1);
 			thismod->new_size--;
