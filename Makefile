@@ -9,9 +9,9 @@ all: fortune puff
 fortune:
 	-@fortune
 install: all
-	install puff $(PREFIX)/bin
+	install -m 0755 puff $(PREFIX)/bin
 	mkdir -p $(PREFIX)/etc || echo -n
-	install puff.conf $(PREFIX)/etc/puff.conf.sample
+	install -m 0644 puff.conf $(PREFIX)/etc/puff.conf.sample
 uninstall:
 	rm -f $(PREFIX)/bin/puff $(PREFIX)/etc/puff.conf
 clean:
