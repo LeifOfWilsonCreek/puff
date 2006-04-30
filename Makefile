@@ -1,5 +1,5 @@
 PREFIX ?= /usr/local
-CFLAGS += -Wall -O3
+CFLAGS += -Wall
 #CFLAGS += -DDEBUG -g
 OBJS = shared.o editfile.o keys.o puff.o
 HEAD = shared.h editfile.h keys.h
