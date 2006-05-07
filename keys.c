@@ -10,7 +10,8 @@
 
 /* the first int is the return value, the rest are what escape string will
  * match it.  Escape strings are ended with -1. */
-int keys[][], definedkeys = 0;
+int keys[sizeof(keys) / sizeof(keys[0])][sizeof(keys[0]) / sizeof(keys[0][0])];
+int definedkeys = 0;
 
 int kgetkey(WINDOW *win) {
 	int thiskey[10], loop, match = 1, found = 1;
