@@ -28,6 +28,7 @@ bugs:
 #include <string.h>
 #include <sys/param.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include "editfile.h"
