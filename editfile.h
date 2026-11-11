@@ -40,7 +40,8 @@ EDITFILE *file_new();
  * file to be opened is not a regular file (and not being created).  For flags,
  * choose from O_RDONLY, O_RDWR, O_CREAT, O_EXCL, and FILE_LOCK.  The first four
  * options describe how to open() the file (see open(2)).  FILE_LOCK requires a
- * lock to be obtained - shared for O_RDONLY, exclusive for O_RDWR.  FILE_LOCKW
+ * lock to be obtained - shared for O_RDONLY, exclusive for O_RDWR - and fails
+ * with errno == EAGAIN if another process holds a conflicting lock.  FILE_LOCKW
  * is the same as FILE_LOCK, except it will block until a lock is obtainable
  * instead of returning an error.  Locking may also be done later by using
  * file_fileno() to get the file number.  The mode parameter is passed to open()
@@ -61,8 +62,9 @@ int file_save(EDITFILE *file);
  * If(flags&FILE_KEEPOLD), the old file stays open and the modifications stay
  *   in memory, else the new file stays open and any more modifications are made
  *   relative to the new file and the new file is open for O_RDWR.
- * If(flags&FILE_LOCK), an error is returned if a write lock cannot be obtained
- *   before writing.  If(flags&FILE_LOCKW), it will block for the lock instead
+ * If(flags&FILE_LOCK), an error is returned (with errno == EAGAIN if another
+ *   process holds a lock) if a write lock cannot be obtained before writing.
+ *   If(flags&FILE_LOCKW), it will block for the lock instead
  *   of returning error.
  * If(flags&FILE_ALLOWOVERWRITE), allow this to act like file_save() if the
  *   inodes for the open file and the specified file are the same.  If this

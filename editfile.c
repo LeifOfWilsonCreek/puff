@@ -41,6 +41,25 @@ typedef struct {		/* modification */
 	unsigned char *data;
 } mod_t;
 
+/* Locks all of fd with type F_RDLCK or F_WRLCK, blocking for the lock if
+ * flgs includes FILE_LOCKW.  Returns 0 on success.  Returns -1 and sets errno
+ * on failure, with errno == EAGAIN if another process holds a lock. */
+static int lock_fd(int fd, short type, int flgs) {
+	struct flock lock = { 0 };
+
+	lock.l_start = 0;
+	lock.l_len = 0;
+	lock.l_type = type;
+	lock.l_whence = SEEK_SET;
+
+	if(fcntl(fd, ((flgs&FILE_LOCKW) == FILE_LOCKW)?F_SETLKW:F_SETLK, &lock)) {
+		/* POSIX allows EACCES or EAGAIN for a lock held elsewhere */
+		if(errno == EACCES) errno = EAGAIN;
+		return -1;
+	}
+	return 0;
+}
+
 /* Frees mod and every mod following it */
 static void free_mods(mod_t *mod) {
 	mod_t *nextmod;
@@ -65,7 +84,6 @@ EDITFILE *file_new() {
 EDITFILE *file_open(char *filename, int flgs, mode_t mode) {
 	EDITFILE *file;
 	struct stat sb;
-	struct flock lock;
 	int tmpfd;
 
 	if((flgs&O_ACCMODE) == O_RDWR) {
@@ -94,17 +112,11 @@ EDITFILE *file_open(char *filename, int flgs, mode_t mode) {
 	}
 
 	/* Obtain a lock if necessary */
-	if(flgs&FILE_LOCK) {
-		lock.l_start = 0;
-		lock.l_len = 0;
-		lock.l_pid = getpid();
-		lock.l_type = ((flgs&O_ACCMODE) == O_RDWR)?F_WRLCK:F_RDLCK;
-		lock.l_whence = SEEK_SET;
-
-		if(fcntl(tmpfd, ((flgs&FILE_LOCKW) == FILE_LOCKW)?F_SETLKW:F_SETLK, &lock)) {
-			close(tmpfd);
-			return 0;
-		}
+	if((flgs&FILE_LOCK) && lock_fd(tmpfd, ((flgs&O_ACCMODE) == O_RDWR)?F_WRLCK:F_RDLCK, flgs)) {
+		int lock_errno = errno;
+		close(tmpfd);
+		errno = lock_errno;
+		return 0;
 	}
 
 	if(!(file = (EDITFILE *)calloc(1, sizeof(EDITFILE)))) {
@@ -252,7 +264,6 @@ int file_saveas(EDITFILE *file, char *new_filename, int flgs, mode_t mode) {
 	FILE *out_fp;
 	off_t offset, read_size;
 	struct stat write_stat;
-	struct flock lock;
 	char buf[BLOCK_SIZE];
 
 	if(!new_filename) {
@@ -291,17 +302,11 @@ int file_saveas(EDITFILE *file, char *new_filename, int flgs, mode_t mode) {
 		return -1;
 	}
 
-	if(flgs&FILE_LOCK) {
-		lock.l_start = 0;
-		lock.l_len = 0;
-		lock.l_pid = getpid();
-		lock.l_type = F_WRLCK;
-		lock.l_whence = SEEK_SET;
-
-		if(fcntl(tmpfd, ((flgs&FILE_LOCKW) == FILE_LOCKW)?F_SETLKW:F_SETLK, &lock)) {
-			close(tmpfd);
-			return -1;
-		}
+	if((flgs&FILE_LOCK) && lock_fd(tmpfd, F_WRLCK, flgs)) {
+		int lock_errno = errno;
+		close(tmpfd);
+		errno = lock_errno;
+		return -1;
 	}
 
 	if(ftruncate(tmpfd, 0) || !(out_fp = fdopen(tmpfd, "rb+"))) {
@@ -349,9 +354,11 @@ int file_saveas(EDITFILE *file, char *new_filename, int flgs, mode_t mode) {
 int file_backup(EDITFILE *file, char *backup_name) {
 	FILE *fp;
 	mod_t *thismod;
+	int fd;
 
-	if(!(fp = fopen(backup_name, "w"))) return -1;
-	fchmod(fileno(fp), S_IRUSR|S_IWUSR);
+	if((fd = open(backup_name, O_WRONLY|O_CREAT|O_TRUNC, S_IRUSR|S_IWUSR)) == -1) return -1;
+	if(!(fp = fdopen(fd, "w"))) { close(fd); return -1; }
+	fchmod(fd, S_IRUSR|S_IWUSR);  /* In case it already existed */
 	if(fputs("EDITFILE backup v1.0\n", fp) == EOF) { fclose(fp); return -1; }
 
 	/* Write out each mod sequentially */

@@ -1711,7 +1711,7 @@ int keysave() {
 				return ERR;
 			}
 			/* Only happens if the filesystem's locking is broken */
-			if(file_saveas(FP, tmpstr, FILE_ALLOWOVERWRITE, S_IRUSR|S_IWUSR)) {
+			if(file_saveas(FP, tmpstr, FILE_ALLOWOVERWRITE, FILE_MODE666)) {
 				redraw_statuswin("%s", strerror(errno));
 				return ERR;
 			}
@@ -1753,7 +1753,7 @@ int keyqsave() {
 			return ERR;
 		}
 		/* Only happens if the filesystem's locking is broken */
-		if(file_saveas(FP, NAME, FILE_ALLOWOVERWRITE, S_IRUSR|S_IWUSR)) {
+		if(file_saveas(FP, NAME, FILE_ALLOWOVERWRITE, FILE_MODE666)) {
 			redraw_statuswin("%s", strerror(errno));
 			return ERR;
 		}
