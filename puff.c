@@ -155,11 +155,14 @@ void redraw_statuswin(char *fmt, ...) {
 			waddstr(statuswin, "No open files.");
 		} else {
 			if(*NAME) {
-				if(strlen(NAME) > oldstart + 2) {
+				int room = oldstart - 1;	/* columns left of the file status */
+				if(room < 4) {
+					*tmpstr = 0;
+				} else if((int)strlen(NAME) > room) {
 					strcpy(tmpstr, "...");
-					strcpy(tmpstr + 3, NAME + strlen(NAME) - oldstart + 4);
+					strlcpy(tmpstr + 3, NAME + strlen(NAME) - (room - 3), sizeof(tmpstr) - 3);
 				} else {
-					strcpy(tmpstr, NAME);
+					strlcpy(tmpstr, NAME, sizeof(tmpstr));
 				}
 
 				waddstr(statuswin, tmpstr);
