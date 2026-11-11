@@ -1674,6 +1674,34 @@ int keysuspend() {
 	return OK;
 }
 
+/* Saves the current file to filename, falling back to an unlocked save if
+ * locking fails for any reason other than another process holding a lock.
+ * Shows an error and returns ERR on failure. */
+int save_to(char *filename, int flgs, mode_t mode) {
+	struct stat sb;
+	int lock_errno;
+
+	if(!stat(filename, &sb) && !S_ISREG(sb.st_mode)) {
+		redraw_statuswin("Not a regular file");
+		return ERR;
+	}
+	flgs |= FILE_ALLOWOVERWRITE;
+	if(!file_saveas(FP, filename, (lock_files?FILE_LOCK:0)|flgs, mode)) return OK;
+	if(!lock_files || errno == EAGAIN) {
+		redraw_statuswin("%s", strerror(errno));
+		return ERR;
+	}
+	/* Only happens if the filesystem's locking is broken */
+	lock_errno = errno;
+	if(file_saveas(FP, filename, flgs, mode)) {
+		redraw_statuswin("%s", strerror(errno));
+		return ERR;
+	}
+	redraw_statuswin("Warning - Could not lock file: %s", strerror(lock_errno));
+	sleep(1);
+	return OK;
+}
+
 int keysave() {
 	char tmpstr[MAX_COLS+1], tmpchar;
 	struct stat sb;
@@ -1700,33 +1728,9 @@ int keysave() {
 	redraw_statuswin("Saving %s...", NAME);
 	if(!curfile) {
 		/* Don't change the name of the clipboard */
-		if(file_saveas(FP, tmpstr, (lock_files?FILE_LOCK:0)|FILE_ALLOWOVERWRITE|FILE_KEEPOLD, S_IRUSR|S_IWUSR)) {
-			if(errno == EAGAIN) {
-				redraw_statuswin("%s", strerror(errno));
-				return ERR;
-			}
-			/* Only happens if the filesystem's locking is broken */
-			if(file_saveas(FP, tmpstr, FILE_ALLOWOVERWRITE|FILE_KEEPOLD, S_IRUSR|S_IWUSR)) {
-				redraw_statuswin("%s", strerror(errno));
-				return ERR;
-			}
-			redraw_statuswin("Warning - Could not lock file: %s", strerror(errno));
-			sleep(1);
-		}
+		if(save_to(tmpstr, FILE_KEEPOLD, S_IRUSR|S_IWUSR) == ERR) return ERR;
 	} else {
-		if(file_saveas(FP, tmpstr, (lock_files?FILE_LOCK:0)|FILE_ALLOWOVERWRITE, FILE_MODE666)) {
-			if(errno == EAGAIN) {
-				redraw_statuswin("%s", strerror(errno));
-				return ERR;
-			}
-			/* Only happens if the filesystem's locking is broken */
-			if(file_saveas(FP, tmpstr, FILE_ALLOWOVERWRITE, FILE_MODE666)) {
-				redraw_statuswin("%s", strerror(errno));
-				return ERR;
-			}
-			redraw_statuswin("Warning - Could not lock file: %s", strerror(errno));
-			sleep(1);
-		}
+		if(save_to(tmpstr, 0, FILE_MODE666) == ERR) return ERR;
 		strlcpy(NAME, tmpstr, sizeof(NAME));
 		MODIFIED = 0;
 	}
@@ -1756,19 +1760,7 @@ int keyqsave() {
 		return keysave();
 
 	redraw_statuswin("Saving %s...", NAME);
-	if(file_saveas(FP, NAME, (lock_files?FILE_LOCK:0)|FILE_ALLOWOVERWRITE, FILE_MODE666)) {
-		if(errno == EAGAIN) {
-			redraw_statuswin("%s", strerror(errno));
-			return ERR;
-		}
-		/* Only happens if the filesystem's locking is broken */
-		if(file_saveas(FP, NAME, FILE_ALLOWOVERWRITE, FILE_MODE666)) {
-			redraw_statuswin("%s", strerror(errno));
-			return ERR;
-		}
-		redraw_statuswin("Warning - Could not lock file: %s", strerror(errno));
-		sleep(1);
-	}
+	if(save_to(NAME, 0, FILE_MODE666) == ERR) return ERR;
 	MODIFIED = 0;
 
 	if(snprintf(tmpstr, sizeof(tmpstr), "%s.changes", NAME) >= sizeof(tmpstr)) return OK;
