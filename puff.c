@@ -480,20 +480,17 @@ void strip_comment(char *string) {
 	while(*ptr) {
 		if(*ptr == '#' && !in_quotes) {
 			*ptr = 0;
-			return;
-		} else if((in_quotes == '\'' && *ptr == '\'')
-				|| (in_quotes == '"' && *ptr == '"')) {
+			break;
+		} else if(in_quotes == *ptr) {
 			in_quotes = 0;
-		} else if((!in_quotes && *ptr == '\'')
-				|| (!in_quotes && *ptr == '"')) {
+		} else if(!in_quotes && (*ptr == '\'' || *ptr == '"')) {
 			in_quotes = *ptr;
 		}
 		ptr++;
 	}
 
 	/* ptr is now at the '\0' of the string.  Kill trailing whitespace. */
-	while(--ptr >= string && strchr("\n\r\t ", *ptr)) *ptr = 0;
-	return;
+	while(ptr > string && strchr("\n\r\t ", ptr[-1])) *--ptr = 0;
 }
 
 void configure_file(char *filename) {
