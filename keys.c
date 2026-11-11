@@ -1,9 +1,10 @@
 #include <curses.h>
 #include <dirent.h>
+#include <limits.h>
+#include <stdio.h>
 #include <string.h>
-#include <sys/param.h>
+#include <strings.h>
 #include <sys/stat.h>
-#include <sys/types.h>
 #include <unistd.h>
 #include "keys.h"
 
@@ -46,14 +47,14 @@ int strmatch(char *s1, char *s2) {
 }
 
 /* tries to extend string to a matching filename with at most maxsize or
- * MAXPATHLEN bytes, whichever is smaller. */
+ * PATH_MAX bytes, whichever is smaller. */
 void tab_file(char *string, int maxsize) {
 	DIR *dir;
 	struct dirent *entry;
-	char tmpstr[MAXPATHLEN], *ptr, *dirname, *filename, newname[MAXPATHLEN] = "";
+	char tmpstr[PATH_MAX], *ptr, *dirname, *filename, newname[PATH_MAX] = "";
 	int filenamelen, found = 0;
 
-	if(maxsize > MAXPATHLEN) maxsize = MAXPATHLEN;
+	if(maxsize > PATH_MAX) maxsize = PATH_MAX;
 	strlcpy(tmpstr, string, sizeof(tmpstr));
 	if((ptr = strrchr(tmpstr, '/'))) {
 		*ptr = 0;

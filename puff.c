@@ -34,20 +34,17 @@ to-do:
 
 #include <ctype.h>
 #include <curses.h>
-#include <dirent.h>
 #include <errno.h>
+#include <limits.h>
 #include <pwd.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/ioctl.h>
-#include <sys/param.h>
 #include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/uio.h>
-#include <termios.h>
 #include <time.h>
 #include <unistd.h>
 #include "editfile.h"
@@ -79,7 +76,7 @@ to-do:
 
 /* Global variables */
 struct {
-	char name[MAXPATHLEN];		/* name of file */
+	char name[PATH_MAX];		/* name of file */
 	EDITFILE *fp;			/* underlying file stream */
 	WINDOW *win;			/* associated window */
 	off_t offset;			/* offset of cursor position */
@@ -96,7 +93,7 @@ int argc;
 char **argv;
 WINDOW *statuswin, *messagewin = 0;
 int curfile;				/* -1 == no current file, 0 == clipboard */
-char homedir[MAXPATHLEN] = "";
+char homedir[PATH_MAX] = "";
 int color_term;
 int tab_size;
 int page_skip;
@@ -332,7 +329,7 @@ int newfile(int curfile, char *filename) {
 int openfile(int curfile, char *filename) {
 	struct stat new_stat;
 	int tmpint;
-	char tmpstr[MAXPATHLEN], tmpchar;
+	char tmpstr[PATH_MAX], tmpchar;
 
 	strcpy(NAME, filename);
 	redraw_statuswin("Opening %s...", NAME);
@@ -930,7 +927,7 @@ void configure_file(char *filename) {
 }
 
 int configure() {
-	char tmpstr[MAXPATHLEN];
+	char tmpstr[PATH_MAX];
 
 	definedkeys = 0;
 
@@ -1046,7 +1043,7 @@ next_signal:
 		if(curfile != -1) display_file(curfile);
 	} else if(sig == SIGINT || sig == SIGTERM || sig == SIGXCPU || sig == SIGXFSZ) {
 		int tmpint, tmpint2;
-		char filename[MAXPATHLEN];
+		char filename[PATH_MAX];
 		struct stat sb;
 
 		tmpint2 = -1;
@@ -1625,7 +1622,7 @@ int keyopen() {
 	}
 	redraw_statuswin("File to open:  ");
 	*tmpstr = 0;
-	if(kgetstr(statuswin, tmpstr, MAXPATHLEN, "file") == ERR || !*tmpstr) {
+	if(kgetstr(statuswin, tmpstr, PATH_MAX, "file") == ERR || !*tmpstr) {
 		redraw_statuswin("file");
 		return ERR;
 	}

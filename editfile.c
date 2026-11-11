@@ -20,16 +20,15 @@ bugs:
 #define LINES_CHUNK 10000       /* Allocation chunk-size (units = sizeof(off_t) bytes).  The slower realloc() is
                                  * on your system, the larger this should be for load time on large files. */
 
+#include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/param.h>
+#include <strings.h>
 #include <sys/stat.h>
-#include <sys/time.h>
-#include <sys/types.h>
 #include <unistd.h>
 #include "editfile.h"
 
@@ -137,9 +136,7 @@ int file_save(EDITFILE *file) {
 	}
 
 	if(!file->mods) {
-#if !defined __linux__ && !defined __sun__
-		futimes(file_fileno(file), NULL);
-#endif
+		futimens(file_fileno(file), NULL);
 		return 0;
 	}
 
@@ -862,7 +859,6 @@ int file_findoff(EDITFILE *file, off_t offset) {
 	return line - 1;
 }
 
-#include <ctype.h>
 int smartstrncasecmp(const char *s1, const char *s2, size_t len) {
 	while(*s1 && len) {
 		int diff;

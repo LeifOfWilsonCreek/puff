@@ -1,3 +1,9 @@
+#ifndef __KEYS_H
+#define __KEYS_H
+
+#include <curses.h>     /* For WINDOW */
+#include <stddef.h>     /* For size_t */
+
 #define KFIRST 512
 #define KOPEN 512
 #define KREDRAW 513
@@ -47,3 +53,5 @@ int strmatch(char *s1, char *s2);
 void tab_file(char *string, int maxsize);
 int kgetkey(WINDOW *win);
 int kgetstr(WINDOW *win, char *buf, size_t maxsize, char *validchars);
+
+#endif

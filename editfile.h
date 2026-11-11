@@ -3,7 +3,6 @@
 
 #include <fcntl.h>      /* For file_open()'s flags parameter */
 #include <stdio.h>      /* For the FILE * type in the EDITFILE struct */
-#include <sys/types.h>  /* For struct stat */
 #include <sys/stat.h>   /* For struct stat */
 
 #ifdef __cplusplus
