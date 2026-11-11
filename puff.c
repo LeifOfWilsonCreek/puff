@@ -468,7 +468,7 @@ void strip_comment(char *string) {
 
 	/* Kill leading whitespace */
 	tmp = strspn(ptr, "\n\r\t ");
-	memmove(ptr + tmp, ptr, strlen(ptr + tmp));
+	memmove(ptr, ptr + tmp, strlen(ptr + tmp) + 1);
 
 	while(*ptr) {
 		if(*ptr == '#' && !in_quotes) {
