@@ -1,10 +1,7 @@
 #include <errno.h>
-#include <limits.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/types.h>
 #include "editfile.h"
 
 int main() {
@@ -49,7 +46,7 @@ int main() {
 			}
 
 		} else if(!strcmp(input, "size\n")) {
-			printf("%qi\n", file_size(file));
+			printf("%lld\n", (long long)file_size(file));
 
 		} else if(!strcmp(input, "fileno\n")) {
 			printf("%i\n", file_fileno(file));
@@ -88,12 +85,12 @@ int main() {
 
 		} else if(!strncmp(input, "truncate ", 9)) {
 			off_t tmpoff = strtoul(input+9, 0, 0);
-			printf("%qi %qi\n", tmpoff, file_truncate(file, tmpoff));
+			printf("%lld %lld\n", (long long)tmpoff, (long long)file_truncate(file, tmpoff));
 
 		} else if(!strncmp(input, "findline ", 9)) {
 			off_t tmpint = file_findline(file, atoi(input+9));
 			if(tmpint == -1) printf("-1\n");
-			else printf("%qi\n", tmpint);
+			else printf("%lld\n", (long long)tmpint);
 
 		} else if(!strcmp(input, "numlines\n")) {
 			printf("%i\n", file_numlines(file));
@@ -104,7 +101,7 @@ int main() {
 			else printf("%i\n", tmpint);
 
 		} else if(!strncmp(input, "search ", 7)) {
-			printf("%qi\n", file_search(file, input+7, strlen(input+7), 0, 0, 0));
+			printf("%lld\n", (long long)file_search(file, input+7, strlen(input+7), 0, 0, 0));
 
 		} else if(!strcmp(input, "cleanup\n")) {
 			file_cleanup(file);

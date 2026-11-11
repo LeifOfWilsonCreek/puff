@@ -1,0 +1,6 @@
+*.o
+/puff
+/puff.core
+/testedit
+/testedit.core
+/core

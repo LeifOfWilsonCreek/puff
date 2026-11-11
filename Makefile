@@ -1,13 +1,11 @@
 PREFIX ?= /usr/local
-CFLAGS += -Wall
+CFLAGS += -Wall -O3
 #CFLAGS += -DDEBUG -g
-OBJS = shared.o editfile.o keys.o puff.o
-HEAD = shared.h editfile.h keys.h
-LIBS = -lcurses -lm
+OBJS = editfile.o keys.o puff.o
+HEAD = editfile.h keys.h
+LIBS = -lcurses
 
-all: fortune puff
-fortune:
-	-@fortune
+all: puff
 install: all
 	install -m 0755 puff $(PREFIX)/bin
 	mkdir -p $(PREFIX)/etc || echo -n
@@ -19,7 +17,6 @@ clean:
 
 puff: $(OBJS)
 	$(CC) $(CFLAGS) -o puff $(OBJS) $(LIBS)
-shared.o: shared.c shared.h strlcat.c strlcpy.c
 editfile.o: editfile.c editfile.h
-keys.o: keys.c keys.h shared.h
+keys.o: keys.c keys.h
 puff.o: puff.c $(HEAD)

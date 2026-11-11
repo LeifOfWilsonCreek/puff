@@ -1,21 +1,41 @@
 #include <curses.h>
 #include <dirent.h>
+#include <errno.h>
+#include <limits.h>
+#include <stdio.h>
 #include <string.h>
-#include <sys/param.h>
+#include <strings.h>
+#include <sys/select.h>
 #include <sys/stat.h>
-#include <sys/types.h>
 #include <unistd.h>
 #include "keys.h"
-#include "shared.h"
 
 /* the first int is the return value, the rest are what escape string will
- * match it.  Escape strings are ended with -1. */
+ * match it. Escape strings are ended with -1. */
 int keys[sizeof(keys) / sizeof(keys[0])][sizeof(keys[0]) / sizeof(keys[0][0])];
 int definedkeys = 0;
 
+/* Call after wgetch() returns ERR to tell whether the terminal is gone. After
+ * a timeout, stdin has nothing to read. At EOF or on error (such as after a
+ * hangup), stdin stays readable but wgetch() still returns ERR. A key that
+ * arrives just after the timeout is pushed back with ungetch(). */
+int input_gone(WINDOW *win) {
+	fd_set readfds;
+	struct timeval tv = { 0, 0 };
+	int ready, key;
+
+	FD_ZERO(&readfds);
+	FD_SET(STDIN_FILENO, &readfds);
+	ready = select(STDIN_FILENO + 1, &readfds, NULL, NULL, &tv);
+	if(ready == -1) return errno != EINTR;
+	if(ready == 0) return 0;
+	if((key = wgetch(win)) == ERR) return 1;
+	ungetch(key);
+	return 0;
+}
+
 int kgetkey(WINDOW *win) {
 	int thiskey[10], loop, match = 1, found = 1;
-	struct stat sb;
 
 	if((thiskey[match] = wgetch(win)) == ERR) return ERR;
 	if(thiskey[match] > 31 && thiskey[match] < 127) return thiskey[match];
@@ -29,7 +49,7 @@ int kgetkey(WINDOW *win) {
 		}
 		match++;
 		if(found) while((thiskey[match] = wgetch(win)) == ERR) {
-			if(fstat(STDIN_FILENO, &sb)) {
+			if(input_gone(win)) {
 				return ERR;
 			}
 		}
@@ -38,7 +58,7 @@ int kgetkey(WINDOW *win) {
 	return ERR;
 }
 
-/* returns the index of the first mismatch in the strings.  If they totally
+/* returns the index of the first mismatch in the strings. If they totally
  * match, it returns the index of the '\0'. */
 int strmatch(char *s1, char *s2) {
 	int index = 0;
@@ -47,14 +67,14 @@ int strmatch(char *s1, char *s2) {
 }
 
 /* tries to extend string to a matching filename with at most maxsize or
- * MAXPATHLEN bytes, whichever is smaller. */
+ * PATH_MAX bytes, whichever is smaller. */
 void tab_file(char *string, int maxsize) {
 	DIR *dir;
 	struct dirent *entry;
-	char tmpstr[MAXPATHLEN], *ptr, *dirname, *filename, newname[MAXPATHLEN] = "";
+	char tmpstr[PATH_MAX], *ptr, *dirname, *filename, newname[PATH_MAX] = "";
 	int filenamelen, found = 0;
 
-	if(maxsize > MAXPATHLEN) maxsize = MAXPATHLEN;
+	if(maxsize > PATH_MAX) maxsize = PATH_MAX;
 	strlcpy(tmpstr, string, sizeof(tmpstr));
 	if((ptr = strrchr(tmpstr, '/'))) {
 		*ptr = 0;
@@ -83,7 +103,7 @@ void tab_file(char *string, int maxsize) {
 		struct stat sb;
 		strlcpy(string+(filename-tmpstr), newname, maxsize-(filename-tmpstr));
 		if(found == 1 && (filenamelen = strlen(string)) < maxsize - 1 &&
-					!stat(string, &sb) && sb.st_mode&S_IFDIR) {
+					!stat(string, &sb) && S_ISDIR(sb.st_mode)) {
 			string[filenamelen++] = '/';
 			string[filenamelen] = 0;
 		}
@@ -91,16 +111,15 @@ void tab_file(char *string, int maxsize) {
 	return;
 }
 
-/* if validchars is NULL, it accepts 32-126.  If maxsize = 1, one character is
+/* if validchars is NULL, it accepts 32-126. If maxsize = 1, one character is
  * accepted and it does not wait for enter, and does not null-terminate.
  * Otherwise, it accepts maxsize-1 bytes from the user and null-terminates the
- * string.  Newline is never stored.  If validchars is "file", it enables the
+ * string. Newline is never stored. If validchars is "file", it enables the
  * tab key to finish typing partial filenames and accepts valid filename
- * characters.  The data stored in buf is used for the default entry, so it
+ * characters. The data stored in buf is used for the default entry, so it
  * should not be garbage. */
 int kgetstr(WINDOW *win, char *buf, size_t maxsize, char *validchars) {
 	int end, position, key, file = 0, number = 0, search = 0, beginpos, max_x, cur_y, searchlen = 0;
-	struct stat sb;
 	char lastsearch[1024];
 
 	getmaxyx(win, cur_y, max_x);
@@ -136,7 +155,7 @@ int kgetstr(WINDOW *win, char *buf, size_t maxsize, char *validchars) {
 		wmove(win, cur_y, beginpos + position);
 		wrefresh(win);
 		while((key = kgetkey(win)) == ERR) {
-			if(fstat(STDIN_FILENO, &sb)) {
+			if(input_gone(win)) {
 				return ERR;
 			}
 		}
@@ -144,8 +163,8 @@ int kgetstr(WINDOW *win, char *buf, size_t maxsize, char *validchars) {
 				|| (!validchars && !number && key >= 32 && key <= 126)
 				|| (number && key >= '0' && key <= '9')
 /* hex codes */	|| (number && position == 1 && buf[0] == '0' && (key == 'x' || key == 'X'))
-		 		|| (number && position > 1 && buf[0] == '0' && (buf[1] == 'x' || buf[1] == 'X') && key >= 'a' && key <= 'f')
-		 		|| (number && position > 1 && buf[0] == '0' && (buf[1] == 'x' || buf[1] == 'X') && key >= 'A' && key <= 'F')
+				|| (number && position > 1 && buf[0] == '0' && (buf[1] == 'x' || buf[1] == 'X') && key >= 'a' && key <= 'f')
+				|| (number && position > 1 && buf[0] == '0' && (buf[1] == 'x' || buf[1] == 'X') && key >= 'A' && key <= 'F')
 			) {
 			if(end < maxsize - 1) {
 				memmove(buf + position + 1, buf + position, end - position + 1);

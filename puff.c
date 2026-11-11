@@ -2,11 +2,9 @@
 bugs:
 	Resizing the screen can leave the current line out of sight
 	Cutting should "paste" into the clipboard so the window moves properly
-	Setting lock_files=0 in puff.conf makes puff hang
 	One-line input buffers need to be scrollable
 	Doesn't pick up .changes when it's on a new file
 	Make pasting move the cursor down
-	puff hangs if you use set window_margin in puff.conf
 
 to-do:
 	ctrl T should accept +/- for an offset from the current position
@@ -34,35 +32,31 @@ to-do:
 
 #include <ctype.h>
 #include <curses.h>
-#include <dirent.h>
 #include <errno.h>
+#include <limits.h>
 #include <pwd.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/ioctl.h>
-#include <sys/param.h>
 #include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/uio.h>
-#include <termios.h>
 #include <time.h>
 #include <unistd.h>
 #include "editfile.h"
 #include "keys.h"
-#include "shared.h"
 
 #define MAX_COLS        1023    /* max number of columns on a terminal */
 #define PUFF_MAX_FILES    36    /* max number of files that we can open, including clipboard */
 
-/* These macros are a little funky.  Normally the "curfile" they reference is
+/* These macros are a little funky. Normally the "curfile" they reference is
  * the global variable called "curfile", which represents what file the user is
- * currently looking at.  Some functions have a parameter called "curfile".  In
- * these, the macros reference that parameter.  This is because occasionally we
+ * currently looking at. Some functions have a parameter called "curfile". In
+ * these, the macros reference that parameter. This is because occasionally we
  * have to do some work with a file that is not currently shown, such as when
- * cutting to the clipboard.  This probably isn't "good practice", but I found
+ * cutting to the clipboard. This probably isn't "good practice", but I found
  * it easier in this case. */
 
 #define NAME        finfo[curfile].name
@@ -80,7 +74,7 @@ to-do:
 
 /* Global variables */
 struct {
-	char name[MAXPATHLEN];		/* name of file */
+	char name[PATH_MAX];		/* name of file */
 	EDITFILE *fp;			/* underlying file stream */
 	WINDOW *win;			/* associated window */
 	off_t offset;			/* offset of cursor position */
@@ -97,7 +91,7 @@ int argc;
 char **argv;
 WINDOW *statuswin, *messagewin = 0;
 int curfile;				/* -1 == no current file, 0 == clipboard */
-char homedir[MAXPATHLEN] = "";
+char homedir[PATH_MAX] = "";
 int color_term;
 int tab_size;
 int page_skip;
@@ -161,11 +155,14 @@ void redraw_statuswin(char *fmt, ...) {
 			waddstr(statuswin, "No open files.");
 		} else {
 			if(*NAME) {
-				if(strlen(NAME) > oldstart + 2) {
+				int room = oldstart - 1;	/* columns left of the file status */
+				if(room < 4) {
+					*tmpstr = 0;
+				} else if((int)strlen(NAME) > room) {
 					strcpy(tmpstr, "...");
-					strcpy(tmpstr + 3, NAME + strlen(NAME) - oldstart + 4);
+					strlcpy(tmpstr + 3, NAME + strlen(NAME) - (room - 3), sizeof(tmpstr) - 3);
 				} else {
-					strcpy(tmpstr, NAME);
+					strlcpy(tmpstr, NAME, sizeof(tmpstr));
 				}
 
 				waddstr(statuswin, tmpstr);
@@ -188,7 +185,7 @@ void redraw_statuswin(char *fmt, ...) {
 	return;
 }
 
-/* redisplay a line.  If term_line == -1, redisplay the current line.
+/* redisplay a line. If term_line == -1, redisplay the current line.
  * We start by knowing TOPLINE, [VH]CURSOR, [VH]SIZE and a tenative LEFTCOL,
  * and calculate OFFSET. */
 void display_line(int curfile, int term_line) {
@@ -333,13 +330,17 @@ int newfile(int curfile, char *filename) {
 int openfile(int curfile, char *filename) {
 	struct stat new_stat;
 	int tmpint;
-	char tmpstr[MAXPATHLEN], tmpchar;
+	char tmpstr[PATH_MAX], tmpchar;
 
-	strcpy(NAME, filename);
+	if(strlcpy(NAME, filename, sizeof(NAME)) >= sizeof(NAME)) {
+		redraw_statuswin("%s: %s", filename, strerror(ENAMETOOLONG));
+		errno = ENAMETOOLONG;
+		return ERR;
+	}
 	redraw_statuswin("Opening %s...", NAME);
 
 	if(stat(filename, &new_stat)) {
-		redraw_statuswin("%s:  %s", filename, strerror(errno));
+		redraw_statuswin("%s: %s", filename, strerror(errno));
 		return ERR;
 	}
 
@@ -374,7 +375,7 @@ int openfile(int curfile, char *filename) {
 		}
 	}
 	if(!FP) {
-		redraw_statuswin("%s:  %s", filename, strerror(errno));
+		redraw_statuswin("%s: %s", filename, strerror(errno));
 		return ERR;
 	}
 
@@ -474,40 +475,37 @@ void strip_comment(char *string) {
 
 	/* Kill leading whitespace */
 	tmp = strspn(ptr, "\n\r\t ");
-	memmove(ptr + tmp, ptr, strlen(ptr + tmp));
+	memmove(ptr, ptr + tmp, strlen(ptr + tmp) + 1);
 
 	while(*ptr) {
 		if(*ptr == '#' && !in_quotes) {
 			*ptr = 0;
-			return;
-		} else if((in_quotes == '\'' && *ptr == '\'')
-				|| (in_quotes == '"' && *ptr == '"')) {
+			break;
+		} else if(in_quotes == *ptr) {
 			in_quotes = 0;
-		} else if((!in_quotes && *ptr == '\'')
-				|| (!in_quotes && *ptr == '"')) {
+		} else if(!in_quotes && (*ptr == '\'' || *ptr == '"')) {
 			in_quotes = *ptr;
 		}
 		ptr++;
 	}
 
-	/* ptr is now at the '\0' of the string.  Kill trailing whitespace. */
-	while(--ptr >= string && strchr("\n\r\t ", *ptr)) *ptr = 0;
-	return;
+	/* ptr is now at the '\0' of the string. Kill trailing whitespace. */
+	while(ptr > string && strchr("\n\r\t ", ptr[-1])) *--ptr = 0;
 }
 
 void configure_file(char *filename) {
 	char keyword[128], *ptr, *nextptr, tmpstr[1024];
-	int nextchar, index;
+	int nextchar, index, haveline;
 	FILE *file;
 
 	if(!(file = fopen(filename, "r"))) return;
-	fgets(tmpstr, sizeof(tmpstr), file);
-	while(!feof(file) && !ferror(file)) {
+	haveline = (fgets(tmpstr, sizeof(tmpstr), file) != NULL);
+	while(haveline) {
 		ptr = tmpstr;
 		strip_comment(ptr);
 		if(!strncasecmp(ptr, "[keys]", 6)) {
 			definedkeys = 0;
-			while(fgets(tmpstr, sizeof(tmpstr), file)) {	/* loop to fill keys */
+			while((haveline = (fgets(tmpstr, sizeof(tmpstr), file) != NULL))) {	/* loop to fill keys */
 				if(definedkeys + 1 >= sizeof(keys) / sizeof(keys[0])) break;
 				strip_comment(tmpstr);
 				if(*tmpstr == '[') break;	/* End of section */
@@ -619,8 +617,10 @@ void configure_file(char *filename) {
 						/* direct ASCII value */
 						keys[definedkeys][index++] = strtol(ptr, 0, 0);
 					} else if(*ptr == '\'' || *ptr == '"') {
-						/* literal string */
-						keys[definedkeys][index++] = *++ptr;
+						/* literal string, one key per byte */
+						char quote = *ptr;
+						while(*++ptr && *ptr != quote && index < 9)
+							keys[definedkeys][index++] = (unsigned char)*ptr;
 					} else if(!strcasecmp(ptr, "ESC")) {
 						keys[definedkeys][index++] = 27;
 					} else if(!strcasecmp(ptr, "CTRL_SPACE")) {
@@ -873,10 +873,10 @@ void configure_file(char *filename) {
 						keys[definedkeys][index++] = KEY_SMOVE;
 					} else if(!strcasecmp(ptr, "KEY_SNEXT")) {
 						keys[definedkeys][index++] = KEY_SNEXT;
-					} else if(!strcasecmp(ptr, "KEY_OPTIONS")) {
-						keys[definedkeys][index++] = KEY_OPTIONS;
-					} else if(!strcasecmp(ptr, "KEY_PREVIOUS")) {
-						keys[definedkeys][index++] = KEY_PREVIOUS;
+					} else if(!strcasecmp(ptr, "KEY_SOPTIONS")) {
+						keys[definedkeys][index++] = KEY_SOPTIONS;
+					} else if(!strcasecmp(ptr, "KEY_SPREVIOUS")) {
+						keys[definedkeys][index++] = KEY_SPREVIOUS;
 					} else if(!strcasecmp(ptr, "KEY_SPRINT")) {
 						keys[definedkeys][index++] = KEY_SPRINT;
 					} else if(!strcasecmp(ptr, "KEY_SREDO")) {
@@ -903,7 +903,7 @@ void configure_file(char *filename) {
 				keys[definedkeys++][index++] = -1;
 			}
 		} else if(!strncasecmp(ptr, "[misc]", 6)) {
-			while(fgets(tmpstr, sizeof(tmpstr), file)) {
+			while((haveline = (fgets(tmpstr, sizeof(tmpstr), file) != NULL))) {
 				ptr = tmpstr;
 				strip_comment(ptr);
 				if(*ptr == '[') {
@@ -924,6 +924,9 @@ void configure_file(char *filename) {
 					seek_centers = strtol(ptr + 13, 0, 0);
 				}
 			}
+		} else {
+			/* Skip lines outside of a known section */
+			haveline = (fgets(tmpstr, sizeof(tmpstr), file) != NULL);
 		}
 	}
 	fclose(file);
@@ -931,7 +934,7 @@ void configure_file(char *filename) {
 }
 
 int configure() {
-	char tmpstr[MAXPATHLEN];
+	char tmpstr[PATH_MAX];
 
 	definedkeys = 0;
 
@@ -1026,12 +1029,25 @@ int configure() {
 	return OK;
 }
 
+/* Writes the clipboard to a new ~/.puff.clipboard if save_clipboard is set,
+ * replacing any existing file even if it isn't writable. An empty clipboard
+ * leaves no file. */
+void store_clipboard() {
+	char filename[PATH_MAX];
+
+	if(!save_clipboard || snprintf(filename, sizeof(filename), "%s/.puff.clipboard", homedir) >= sizeof(filename)) return;
+	unlink(filename);
+	if(file_size(finfo[0].fp)) {
+		file_saveas(finfo[0].fp, filename, lock_files?FILE_LOCK:0, S_IRUSR|S_IWUSR);
+	}
+}
+
 void sigs(int sig) {
 	volatile static int raisedsignal = 0, nextsignal = 0;
 
 	/* Don't let the signal handler run within itself */
 	/* We only enqueue one signal because repeated SIGWINCHs don't matter
-	 * as long as the last one is handled.  SIGHUP causes a re-configure
+	 * as long as the last one is handled. SIGHUP causes a re-configure
 	 * and the config file won't change that quick, and the others cause us
 	 * to exit anyway. */
 	if(raisedsignal) {
@@ -1047,33 +1063,8 @@ next_signal:
 		if(curfile != -1) display_file(curfile);
 	} else if(sig == SIGINT || sig == SIGTERM || sig == SIGXCPU || sig == SIGXFSZ) {
 		int tmpint, tmpint2;
-		char filename[MAXPATHLEN];
+		char filename[PATH_MAX];
 		struct stat sb;
-
-		tmpint2 = -1;
-		for(tmpint = 1; tmpint < PUFF_MAX_FILES; tmpint++) {
-			if(finfo[tmpint].fp && finfo[tmpint].modified) {
-				if(finfo[tmpint].name[0]) {
-					if(snprintf(filename, sizeof(filename), "%s.changes", finfo[tmpint].name) >= sizeof(filename)) continue;
-					file_backup(finfo[tmpint].fp, filename);
-					continue;
-				} else {
-					while(++tmpint2 < 1000) {
-						if(snprintf(filename, sizeof(filename), "%s/.puff.bak.%i", finfo[tmpint].name, tmpint2) >= sizeof(filename)) break;
-						if(stat(filename, &sb)) {
-							/* Don't overwrite existing files */
-							if(errno == ENOENT) {
-								file_saveas(finfo[tmpint].fp, filename, 0, S_IRUSR|S_IWUSR);
-							}
-							break;
-						}
-					}
-				}
-			}
-		}
-		if(save_clipboard && snprintf(filename, sizeof(filename), "%s/.puff.clipboard", homedir) < sizeof(filename)) {
-			file_saveas(finfo[0].fp, filename, (lock_files?FILE_LOCK:0)|FILE_ALLOWOVERWRITE, S_IRUSR|S_IWUSR);
-		}
 
 		endwin();
 		if(sig == SIGINT) {
@@ -1085,6 +1076,35 @@ next_signal:
 		} else if(sig == SIGXFSZ) {
 			printf("File size limit exceeded.\n");
 		}
+
+		tmpint2 = -1;
+		for(tmpint = 1; tmpint < PUFF_MAX_FILES; tmpint++) {
+			if(finfo[tmpint].fp && finfo[tmpint].modified) {
+				if(finfo[tmpint].name[0]) {
+					if(snprintf(filename, sizeof(filename), "%s.changes", finfo[tmpint].name) >= sizeof(filename)) continue;
+					if(file_backup(finfo[tmpint].fp, filename)) {
+						printf("Couldn't save changes to %s: %s\n", filename, strerror(errno));
+					} else {
+						printf("Saved changes to %s\n", filename);
+					}
+					continue;
+				} else {
+					while(++tmpint2 < 1000) {
+						if(snprintf(filename, sizeof(filename), "%s/.puff.bak.%i", homedir, tmpint2) >= sizeof(filename)) break;
+						if(stat(filename, &sb)) {
+							/* Don't overwrite existing files */
+							if(errno != ENOENT || file_saveas(finfo[tmpint].fp, filename, 0, S_IRUSR|S_IWUSR)) {
+								printf("Couldn't save unnamed file to %s: %s\n", filename, strerror(errno));
+							} else {
+								printf("Saved unnamed file to %s\n", filename);
+							}
+							break;
+						}
+					}
+				}
+			}
+		}
+		store_clipboard();
 		exit(1);
 #ifndef __sun__   /* SunOS appears to be missing resizeterm() and wresize(). */
 	} else if(sig == SIGWINCH) {
@@ -1142,7 +1162,7 @@ next_signal:
 		printf("color_term = %i\r\n", color_term);
 		printf("topline = %i\tvcursor = %i\thcursor = %i\trealh = %i\toffset = %i\r\n",
 				TOPLINE, VCURSOR, (int)HCURSOR, (int)REALH, (int)OFFSET);
-		printf("memusage:  %i\r\n", file_memusage(FP));
+		printf("memusage: %i\r\n", file_memusage(FP));
 		fflush(stdout);
 #endif
 	}
@@ -1228,7 +1248,7 @@ int seekbyte(int curfile, off_t offset, int vcenter) {
 	display_line(curfile, -1);	/* get accurate offset */
 	REALH = offset - OFFSET;	/* approximate horiz position */
 	display_line(curfile, -1);
-	while(abs(OFFSET - offset) > tab_size * 3) {
+	while(llabs(OFFSET - offset) > tab_size * 3) {
 		/* speed optimization - get close quickly, not really necessary, but
 		 * EOL can be -really- slow without this */
 		HCURSOR += offset - OFFSET;
@@ -1317,8 +1337,8 @@ int keyleft() {
 	int tmpint;
 
 	/* HCURSOR stores where the cursor wants to be, and REALH stores
-	 * where the cursor actually is.  REALH is displayed on the status
-	 * line.  display_line gets where to put the cursor from HCURSOR and
+	 * where the cursor actually is. REALH is displayed on the status
+	 * line. display_line gets where to put the cursor from HCURSOR and
 	 * updates REALH. */
 	if(curfile == -1) return ERR;
 	HCURSOR = REALH;
@@ -1468,7 +1488,7 @@ int keyenter() {
 	if(curfile == -1) return ERR;
 	HCURSOR = REALH;
 	if(file_insert(FP, OFFSET, 1, "\n") != 1) {
-		redraw_statuswin("Internal error:  %s", strerror(errno));
+		redraw_statuswin("Internal error: %s", strerror(errno));
 		return ERR;
 	}
 	HCURSOR = 0;
@@ -1479,20 +1499,26 @@ int keyenter() {
 }
 
 int keyspecial() {
-	char tmpstr[MAX_COLS+1];
-	int tmpint;
+	char tmpstr[MAX_COLS+1], *end;
+	unsigned char code;
+	long value;
 
 	if(curfile == -1) return ERR;
 	*tmpstr = 0;
-	redraw_statuswin("Enter ASCII code:  ");
+	redraw_statuswin("Enter ASCII code: ");
 	if(kgetstr(statuswin, tmpstr, 5, "number") == ERR || !*tmpstr) {
 		redraw_statuswin("file");
 		return ERR;
 	}
-	tmpint = strtol(tmpstr, 0, 0);
+	value = strtol(tmpstr, &end, 0);
+	if(*end || value > 255) {
+		redraw_statuswin("Invalid code: %s", tmpstr);
+		return ERR;
+	}
+	code = value;
 	HCURSOR = REALH;
-	if(file_insert(FP, OFFSET, 1, &tmpint) != 1) {
-		redraw_statuswin("Internal error:  %s", strerror(errno));
+	if(file_insert(FP, OFFSET, 1, &code) != 1) {
+		redraw_statuswin("Internal error: %s", strerror(errno));
 		return ERR;
 	}
 	keyright();
@@ -1507,7 +1533,7 @@ int keyseekline() {
 	off_t tmpoff;
 
 	if(curfile == -1) return ERR;
-	redraw_statuswin("Enter line:  ");
+	redraw_statuswin("Enter line: ");
 	tmpstr[0] = 0;
 	if(kgetstr(statuswin, tmpstr, 10, "number") == ERR || !tmpstr[0]) {
 		redraw_statuswin("file");
@@ -1531,7 +1557,7 @@ int keyseekbyte() {
 	off_t tmpoff;
 
 	if(curfile == -1) return ERR;
-	redraw_statuswin("Enter offset:  ");
+	redraw_statuswin("Enter offset: ");
 	tmpstr[0] = 0;
 	if(kgetstr(statuswin, tmpstr, 19, "number") == ERR || !*tmpstr) {
 		redraw_statuswin("file");
@@ -1561,12 +1587,18 @@ int keysearchnext() {
 	tmpint = strlen(old_search.text);
 	tmpoff = file_search(FP, old_search.text, tmpint, OFFSET + 1, file_size(FP),
 		old_search.sensitive == 'S' ? FILE_SMARTCASE : old_search.sensitive == 'N' ? FILE_NOCASE : 0);
-	redraw_statuswin("file");
-	if(tmpoff == -1) {
+	if(tmpoff >= 0) {
+		redraw_statuswin("file");
+	} else if(tmpoff == -1) {
 		redraw_statuswin("Search wrapped...");
 		tmpoff = file_search(FP, old_search.text, tmpint, 0, OFFSET + tmpint,
 			old_search.sensitive == 'S' ? FILE_SMARTCASE : old_search.sensitive == 'N' ? FILE_NOCASE : 0);
-		if(tmpoff != -1) redraw_statuswin("Search wrapped");
+		if(tmpoff >= 0) redraw_statuswin("Search wrapped");
+	}
+	if(tmpoff == -2) {
+		/* Checked before any redraw_statuswin() so errno is intact */
+		redraw_statuswin("Search failed: %s", strerror(errno));
+		return ERR;
 	}
 	if(tmpoff == -1) {
 		redraw_statuswin("Not found");
@@ -1581,7 +1613,7 @@ int keysearch() {
 	if(curfile == -1) return ERR;
 
 	/* Get string */
-	redraw_statuswin("Search for:  ");
+	redraw_statuswin("Search for: ");
 	strcpy(new_search.text, old_search.text);
 	if(kgetstr(statuswin, new_search.text, sizeof(new_search.text), "search") == ERR) goto cancel;
 	if(! new_search.text[0]) return keysearchnext();
@@ -1624,9 +1656,9 @@ int keyopen() {
 		redraw_statuswin("Too many files open.");
 		return ERR;
 	}
-	redraw_statuswin("File to open:  ");
+	redraw_statuswin("File to open: ");
 	*tmpstr = 0;
-	if(kgetstr(statuswin, tmpstr, MAXPATHLEN, "file") == ERR || !*tmpstr) {
+	if(kgetstr(statuswin, tmpstr, PATH_MAX, "file") == ERR || !*tmpstr) {
 		redraw_statuswin("file");
 		return ERR;
 	}
@@ -1650,12 +1682,40 @@ int keysuspend() {
 	return OK;
 }
 
+/* Saves the current file to filename, falling back to an unlocked save if
+ * locking fails for any reason other than another process holding a lock.
+ * Shows an error and returns ERR on failure. */
+int save_to(char *filename, int flgs, mode_t mode) {
+	struct stat sb;
+	int lock_errno;
+
+	if(!stat(filename, &sb) && !S_ISREG(sb.st_mode)) {
+		redraw_statuswin("Not a regular file");
+		return ERR;
+	}
+	flgs |= FILE_ALLOWOVERWRITE;
+	if(!file_saveas(FP, filename, (lock_files?FILE_LOCK:0)|flgs, mode)) return OK;
+	if(!lock_files || errno == EAGAIN) {
+		redraw_statuswin("%s", strerror(errno));
+		return ERR;
+	}
+	/* Only happens if the filesystem's locking is broken */
+	lock_errno = errno;
+	if(file_saveas(FP, filename, flgs, mode)) {
+		redraw_statuswin("%s", strerror(errno));
+		return ERR;
+	}
+	redraw_statuswin("Warning - Could not lock file: %s", strerror(lock_errno));
+	sleep(1);
+	return OK;
+}
+
 int keysave() {
 	char tmpstr[MAX_COLS+1], tmpchar;
 	struct stat sb;
 
 	if(curfile == -1) return ERR;
-	redraw_statuswin("Filename:  ");
+	redraw_statuswin("Filename: ");
 	if(curfile) strlcpy(tmpstr, NAME, sizeof(tmpstr));
 	else *tmpstr = 0;	/* No default name for clipboard */
 	if(kgetstr(statuswin, tmpstr, sizeof(tmpstr), "file") == ERR || !*tmpstr) {
@@ -1676,33 +1736,9 @@ int keysave() {
 	redraw_statuswin("Saving %s...", NAME);
 	if(!curfile) {
 		/* Don't change the name of the clipboard */
-		if(file_saveas(FP, tmpstr, (lock_files?FILE_LOCK:0)|FILE_ALLOWOVERWRITE|FILE_KEEPOLD, S_IRUSR|S_IWUSR)) {
-			if(errno == EAGAIN) {
-				redraw_statuswin("%s", strerror(errno));
-				return ERR;
-			}
-			/* Only happens if the filesystem's locking is broken */
-			if(file_saveas(FP, tmpstr, FILE_ALLOWOVERWRITE|FILE_KEEPOLD, S_IRUSR|S_IWUSR)) {
-				redraw_statuswin("%s", strerror(errno));
-				return ERR;
-			}
-			redraw_statuswin("Warning - Could not lock file: %s", strerror(errno));
-			sleep(1);
-		}
+		if(save_to(tmpstr, FILE_KEEPOLD, S_IRUSR|S_IWUSR) == ERR) return ERR;
 	} else {
-		if(file_saveas(FP, tmpstr, (lock_files?FILE_LOCK:0)|FILE_ALLOWOVERWRITE, FILE_MODE666)) {
-			if(errno == EAGAIN) {
-				redraw_statuswin("%s", strerror(errno));
-				return ERR;
-			}
-			/* Only happens if the filesystem's locking is broken */
-			if(file_saveas(FP, tmpstr, FILE_ALLOWOVERWRITE, S_IRUSR|S_IWUSR)) {
-				redraw_statuswin("%s", strerror(errno));
-				return ERR;
-			}
-			redraw_statuswin("Warning - Could not lock file: %s", strerror(errno));
-			sleep(1);
-		}
+		if(save_to(tmpstr, 0, FILE_MODE666) == ERR) return ERR;
 		strlcpy(NAME, tmpstr, sizeof(NAME));
 		MODIFIED = 0;
 	}
@@ -1732,19 +1768,7 @@ int keyqsave() {
 		return keysave();
 
 	redraw_statuswin("Saving %s...", NAME);
-	if(file_saveas(FP, NAME, (lock_files?FILE_LOCK:0)|FILE_ALLOWOVERWRITE, FILE_MODE666)) {
-		if(errno == EAGAIN) {
-			redraw_statuswin("%s", strerror(errno));
-			return ERR;
-		}
-		/* Only happens if the filesystem's locking is broken */
-		if(file_saveas(FP, NAME, FILE_ALLOWOVERWRITE, S_IRUSR|S_IWUSR)) {
-			redraw_statuswin("%s", strerror(errno));
-			return ERR;
-		}
-		redraw_statuswin("Warning - Could not lock file: %s", strerror(errno));
-		sleep(1);
-	}
+	if(save_to(NAME, 0, FILE_MODE666) == ERR) return ERR;
 	MODIFIED = 0;
 
 	if(snprintf(tmpstr, sizeof(tmpstr), "%s.changes", NAME) >= sizeof(tmpstr)) return OK;
@@ -1848,9 +1872,7 @@ int keyexit() {
 		}
 	}
 	curfile = 0;
-	if(save_clipboard) {
-		file_save(FP);
-	}
+	store_clipboard();
 	file_close(FP);
 	werase(statuswin);
 	wrefresh(statuswin);
@@ -1887,7 +1909,6 @@ int keyswitch() {
 
 int keyfilemenu() {
 	int topfile = 0, maxy, maxx, tmpint, key;
-	struct stat sb;
 	char permstr[32];
 
 	if(!(messagewin = newwin(LINES - 1, COLS, 0, 0))) {
@@ -1904,7 +1925,7 @@ int keyfilemenu() {
 		wmove(messagewin, 0, maxx - 25);    waddstr(messagewin, "Last saved date");
 
 		tmpint = topfile - 1;
-		while(++tmpint < PUFF_MAX_FILES && tmpint + 1 - topfile < maxy) {
+		while(++tmpint < PUFF_MAX_FILES && tmpint + 1 - topfile < maxy - 1) {
 			wmove(messagewin, tmpint + 1 - topfile, 0);
 			if(tmpint < 10) key = tmpint + '0';
 			else key = tmpint + 'A' - 10;
@@ -1936,18 +1957,16 @@ int keyfilemenu() {
 				waddstr(messagewin, ctime(& file_stat(finfo[tmpint].fp)->st_mtime ));
 			}
 		}
-		if(wmove(messagewin, maxy, 0) == OK)
-//does this work?
-			waddstr(messagewin, "# = current file, ! = file was modified");
+		wmove(messagewin, maxy - 1, 0);
+		waddstr(messagewin, "# = current file, ! = file was modified");
 		wnoutrefresh(messagewin);
 
 //build prompt string and character acceptance string
 
-		redraw_statuswin("^N=New, ^O=Open, ^C=Close, ^S=Save, ^A=More, 0-9, A-Z=Switch:  ");
+		redraw_statuswin("^N=New, ^O=Open, ^C=Close, ^S=Save, ^A=More, 0-9, A-Z=Switch: ");
 		wclrtoeol(statuswin);
 		while((key = wgetch(statuswin)) == ERR) {
-// This isn't right!
-			if(fstat(STDIN_FILENO, &sb)) {
+			if(input_gone(statuswin)) {
 				werase(messagewin);
 				wnoutrefresh(messagewin);
 				delwin(messagewin);
@@ -1957,7 +1976,8 @@ int keyfilemenu() {
 		}
 
 		if(key == 1) {     /* Ctrl-A */
-			topfile += maxy - page_skip - 1;
+			int step = maxy - page_skip - 2;
+			topfile += step > 0 ? step : 1;
 			if(topfile >= PUFF_MAX_FILES) topfile = 0;
 			continue;
 		}
@@ -1982,7 +2002,7 @@ int keyfilemenu() {
 			curfile = tmpint;
 			redraw_statuswin("file");
 		}
-	} else if(toupper(key) >= 'A' && toupper(key) <= 'Z') {
+	} else if((key >= 'A' && key <= 'Z') || (key >= 'a' && key <= 'z')) {
 		tmpint = toupper(key) - 'A' + 10;
 		if(!finfo[tmpint].fp) {
 			redraw_statuswin("Invalid file %i.", tmpint);
@@ -2061,6 +2081,10 @@ int keypaste() {
 		redraw_statuswin("Don't paste on the clipboard.");
 		return ERR;
 	}
+	if(!file_size(finfo[0].fp)) {
+		redraw_statuswin("Clipboard is empty.");
+		return ERR;
+	}
 	if(!(ptr = malloc(file_size(finfo[0].fp)))) {
 		redraw_statuswin("Out of memory.");
 		return ERR;
@@ -2092,7 +2116,6 @@ int keyclearclip() {
 int main(int Argc, char **Argv) {
 	int key, tmpint;
 	char tmpstr[MAX_COLS+1];
-	struct stat sb;
 
 	argc = Argc;
 	argv = Argv;
@@ -2269,9 +2292,8 @@ int main(int Argc, char **Argv) {
 		if(curfile != -1) {redrawwin(WIN); wnoutrefresh(WIN);}
 		doupdate();
 
-// This isn't right!
 		while((key = kgetkey(statuswin)) == ERR) {
-			if(fstat(STDIN_FILENO, &sb))
+			if(input_gone(statuswin))
 				raise(SIGTERM);
 		}
 
@@ -2280,7 +2302,7 @@ int main(int Argc, char **Argv) {
 			HCURSOR = REALH;
 			*tmpstr = (char)key;
 			if(file_insert(FP, OFFSET, 1, tmpstr) != 1) {
-				redraw_statuswin("Internal error:  %s", strerror(errno));
+				redraw_statuswin("Internal error: %s", strerror(errno));
 				continue;
 			}
 			keyright();
