@@ -1069,7 +1069,7 @@ next_signal:
 					continue;
 				} else {
 					while(++tmpint2 < 1000) {
-						if(snprintf(filename, sizeof(filename), "%s/.puff.bak.%i", finfo[tmpint].name, tmpint2) >= sizeof(filename)) break;
+						if(snprintf(filename, sizeof(filename), "%s/.puff.bak.%i", homedir, tmpint2) >= sizeof(filename)) break;
 						if(stat(filename, &sb)) {
 							/* Don't overwrite existing files */
 							if(errno == ENOENT) {
