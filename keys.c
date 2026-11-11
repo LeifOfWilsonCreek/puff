@@ -83,7 +83,7 @@ void tab_file(char *string, int maxsize) {
 		struct stat sb;
 		strlcpy(string+(filename-tmpstr), newname, maxsize-(filename-tmpstr));
 		if(found == 1 && (filenamelen = strlen(string)) < maxsize - 1 &&
-					!stat(string, &sb) && sb.st_mode&S_IFDIR) {
+					!stat(string, &sb) && S_ISDIR(sb.st_mode)) {
 			string[filenamelen++] = '/';
 			string[filenamelen] = 0;
 		}

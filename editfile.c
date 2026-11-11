@@ -999,7 +999,7 @@ void file_debug_dump(EDITFILE *file) {
 	int loop;
 
 	mod = (mod_t *)file->mods;
-	printf("\e[2Jsize = %i\r\n", (int)file->size);
+	printf("\033[2Jsize = %i\r\n", (int)file->size);
 	while(mod) {
 		printf("begin = %i ", (int)mod->begin);
 		printf("old_size = %i ", mod->old_size);

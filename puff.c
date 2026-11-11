@@ -1224,7 +1224,7 @@ int seekbyte(int curfile, off_t offset, int vcenter) {
 	display_line(curfile, -1);	/* get accurate offset */
 	REALH = offset - OFFSET;	/* approximate horiz position */
 	display_line(curfile, -1);
-	while(abs(OFFSET - offset) > tab_size * 3) {
+	while(llabs(OFFSET - offset) > tab_size * 3) {
 		/* speed optimization - get close quickly, not really necessary, but
 		 * EOL can be -really- slow without this */
 		HCURSOR += offset - OFFSET;
