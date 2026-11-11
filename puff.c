@@ -1497,8 +1497,9 @@ int keyenter() {
 }
 
 int keyspecial() {
-	char tmpstr[MAX_COLS+1];
+	char tmpstr[MAX_COLS+1], *end;
 	unsigned char code;
+	long value;
 
 	if(curfile == -1) return ERR;
 	*tmpstr = 0;
@@ -1507,7 +1508,12 @@ int keyspecial() {
 		redraw_statuswin("file");
 		return ERR;
 	}
-	code = strtol(tmpstr, 0, 0);
+	value = strtol(tmpstr, &end, 0);
+	if(*end || value > 255) {
+		redraw_statuswin("Invalid code:  %s", tmpstr);
+		return ERR;
+	}
+	code = value;
 	HCURSOR = REALH;
 	if(file_insert(FP, OFFSET, 1, &code) != 1) {
 		redraw_statuswin("Internal error:  %s", strerror(errno));
