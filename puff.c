@@ -621,7 +621,7 @@ void configure_file(char *filename) {
 						keys[definedkeys][index++] = strtol(ptr, 0, 0);
 					} else if(*ptr == '\'' || *ptr == '"') {
 						/* literal string */
-						keys[definedkeys][index++] = *++ptr;
+						keys[definedkeys][index++] = (unsigned char)*++ptr;
 					} else if(!strcasecmp(ptr, "ESC")) {
 						keys[definedkeys][index++] = 27;
 					} else if(!strcasecmp(ptr, "CTRL_SPACE")) {
@@ -1993,7 +1993,7 @@ int keyfilemenu() {
 			curfile = tmpint;
 			redraw_statuswin("file");
 		}
-	} else if(toupper(key) >= 'A' && toupper(key) <= 'Z') {
+	} else if((key >= 'A' && key <= 'Z') || (key >= 'a' && key <= 'z')) {
 		tmpint = toupper(key) - 'A' + 10;
 		if(!finfo[tmpint].fp) {
 			redraw_statuswin("Invalid file %i.", tmpint);

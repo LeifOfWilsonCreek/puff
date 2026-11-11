@@ -828,15 +828,17 @@ int file_findoff(EDITFILE *file, off_t offset) {
 	return line - 1;
 }
 
-int smartstrncasecmp(const char *s1, const char *s2, size_t len) {
-	while(*s1 && len) {
+static int smartstrncasecmp(const char *s1, const char *s2, size_t len) {
+	const unsigned char *u1 = (const unsigned char *)s1, *u2 = (const unsigned char *)s2;
+
+	while(*u1 && len) {
 		int diff;
-		if(isupper(*s1))
-			diff = *s1 - *s2;  /* Uppercase letters in s1 match sensitively */
+		if(isupper(*u1))
+			diff = *u1 - *u2;  /* Uppercase letters in s1 match sensitively */
 		else
-			diff = *s1 - tolower(*s2);
+			diff = *u1 - tolower(*u2);
 		if(diff) return diff;
-		s1++, s2++, len--;
+		u1++, u2++, len--;
 	}
 	return 0;
 }
