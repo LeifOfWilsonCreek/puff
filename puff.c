@@ -329,7 +329,11 @@ int openfile(int curfile, char *filename) {
 	int tmpint;
 	char tmpstr[PATH_MAX], tmpchar;
 
-	strcpy(NAME, filename);
+	if(strlcpy(NAME, filename, sizeof(NAME)) >= sizeof(NAME)) {
+		redraw_statuswin("%s:  %s", filename, strerror(ENAMETOOLONG));
+		errno = ENAMETOOLONG;
+		return ERR;
+	}
 	redraw_statuswin("Opening %s...", NAME);
 
 	if(stat(filename, &new_stat)) {
