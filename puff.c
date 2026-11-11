@@ -2,11 +2,9 @@
 bugs:
 	Resizing the screen can leave the current line out of sight
 	Cutting should "paste" into the clipboard so the window moves properly
-	Setting lock_files=0 in puff.conf makes puff hang
 	One-line input buffers need to be scrollable
 	Doesn't pick up .changes when it's on a new file
 	Make pasting move the cursor down
-	puff hangs if you use set window_margin in puff.conf
 
 to-do:
 	ctrl T should accept +/- for an offset from the current position
@@ -493,17 +491,17 @@ void strip_comment(char *string) {
 
 void configure_file(char *filename) {
 	char keyword[128], *ptr, *nextptr, tmpstr[1024];
-	int nextchar, index;
+	int nextchar, index, haveline;
 	FILE *file;
 
 	if(!(file = fopen(filename, "r"))) return;
-	fgets(tmpstr, sizeof(tmpstr), file);
-	while(!feof(file) && !ferror(file)) {
+	haveline = (fgets(tmpstr, sizeof(tmpstr), file) != NULL);
+	while(haveline) {
 		ptr = tmpstr;
 		strip_comment(ptr);
 		if(!strncasecmp(ptr, "[keys]", 6)) {
 			definedkeys = 0;
-			while(fgets(tmpstr, sizeof(tmpstr), file)) {	/* loop to fill keys */
+			while((haveline = (fgets(tmpstr, sizeof(tmpstr), file) != NULL))) {	/* loop to fill keys */
 				if(definedkeys + 1 >= sizeof(keys) / sizeof(keys[0])) break;
 				strip_comment(tmpstr);
 				if(*tmpstr == '[') break;	/* End of section */
@@ -899,7 +897,7 @@ void configure_file(char *filename) {
 				keys[definedkeys++][index++] = -1;
 			}
 		} else if(!strncasecmp(ptr, "[misc]", 6)) {
-			while(fgets(tmpstr, sizeof(tmpstr), file)) {
+			while((haveline = (fgets(tmpstr, sizeof(tmpstr), file) != NULL))) {
 				ptr = tmpstr;
 				strip_comment(ptr);
 				if(*ptr == '[') {
@@ -920,6 +918,9 @@ void configure_file(char *filename) {
 					seek_centers = strtol(ptr + 13, 0, 0);
 				}
 			}
+		} else {
+			/* Skip lines outside of a known section */
+			haveline = (fgets(tmpstr, sizeof(tmpstr), file) != NULL);
 		}
 	}
 	fclose(file);
