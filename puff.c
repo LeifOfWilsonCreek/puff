@@ -1488,7 +1488,7 @@ int keyenter() {
 
 int keyspecial() {
 	char tmpstr[MAX_COLS+1];
-	int tmpint;
+	unsigned char code;
 
 	if(curfile == -1) return ERR;
 	*tmpstr = 0;
@@ -1497,9 +1497,9 @@ int keyspecial() {
 		redraw_statuswin("file");
 		return ERR;
 	}
-	tmpint = strtol(tmpstr, 0, 0);
+	code = strtol(tmpstr, 0, 0);
 	HCURSOR = REALH;
-	if(file_insert(FP, OFFSET, 1, &tmpint) != 1) {
+	if(file_insert(FP, OFFSET, 1, &code) != 1) {
 		redraw_statuswin("Internal error:  %s", strerror(errno));
 		return ERR;
 	}
