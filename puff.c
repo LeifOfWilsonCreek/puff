@@ -1916,7 +1916,7 @@ int keyfilemenu() {
 		wmove(messagewin, 0, maxx - 25);    waddstr(messagewin, "Last saved date");
 
 		tmpint = topfile - 1;
-		while(++tmpint < PUFF_MAX_FILES && tmpint + 1 - topfile < maxy) {
+		while(++tmpint < PUFF_MAX_FILES && tmpint + 1 - topfile < maxy - 1) {
 			wmove(messagewin, tmpint + 1 - topfile, 0);
 			if(tmpint < 10) key = tmpint + '0';
 			else key = tmpint + 'A' - 10;
@@ -1948,9 +1948,8 @@ int keyfilemenu() {
 				waddstr(messagewin, ctime(& file_stat(finfo[tmpint].fp)->st_mtime ));
 			}
 		}
-		if(wmove(messagewin, maxy, 0) == OK)
-//does this work?
-			waddstr(messagewin, "# = current file, ! = file was modified");
+		wmove(messagewin, maxy - 1, 0);
+		waddstr(messagewin, "# = current file, ! = file was modified");
 		wnoutrefresh(messagewin);
 
 //build prompt string and character acceptance string
@@ -1968,7 +1967,8 @@ int keyfilemenu() {
 		}
 
 		if(key == 1) {     /* Ctrl-A */
-			topfile += maxy - page_skip - 1;
+			int step = maxy - page_skip - 2;
+			topfile += step > 0 ? step : 1;
 			if(topfile >= PUFF_MAX_FILES) topfile = 0;
 			continue;
 		}
