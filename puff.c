@@ -617,8 +617,10 @@ void configure_file(char *filename) {
 						/* direct ASCII value */
 						keys[definedkeys][index++] = strtol(ptr, 0, 0);
 					} else if(*ptr == '\'' || *ptr == '"') {
-						/* literal string */
-						keys[definedkeys][index++] = (unsigned char)*++ptr;
+						/* literal string, one key per byte */
+						char quote = *ptr;
+						while(*++ptr && *ptr != quote && index < 9)
+							keys[definedkeys][index++] = (unsigned char)*ptr;
 					} else if(!strcasecmp(ptr, "ESC")) {
 						keys[definedkeys][index++] = 27;
 					} else if(!strcasecmp(ptr, "CTRL_SPACE")) {
@@ -871,10 +873,10 @@ void configure_file(char *filename) {
 						keys[definedkeys][index++] = KEY_SMOVE;
 					} else if(!strcasecmp(ptr, "KEY_SNEXT")) {
 						keys[definedkeys][index++] = KEY_SNEXT;
-					} else if(!strcasecmp(ptr, "KEY_OPTIONS")) {
-						keys[definedkeys][index++] = KEY_OPTIONS;
-					} else if(!strcasecmp(ptr, "KEY_PREVIOUS")) {
-						keys[definedkeys][index++] = KEY_PREVIOUS;
+					} else if(!strcasecmp(ptr, "KEY_SOPTIONS")) {
+						keys[definedkeys][index++] = KEY_SOPTIONS;
+					} else if(!strcasecmp(ptr, "KEY_SPREVIOUS")) {
+						keys[definedkeys][index++] = KEY_SPREVIOUS;
 					} else if(!strcasecmp(ptr, "KEY_SPRINT")) {
 						keys[definedkeys][index++] = KEY_SPRINT;
 					} else if(!strcasecmp(ptr, "KEY_SREDO")) {
