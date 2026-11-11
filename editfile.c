@@ -72,6 +72,14 @@ static void free_mods(mod_t *mod) {
 	}
 }
 
+/* Discards the line offsets.  file_findline() rebuilds them as needed. */
+static void forget_lines(EDITFILE *file) {
+	free(file->lines);
+	file->lines = 0;
+	file->sizeof_lines = 0;
+	file->alloc_lines = 0;
+}
+
 EDITFILE *file_new() {
 	EDITFILE *file;
 	file = (EDITFILE *)calloc(1, sizeof(EDITFILE));
@@ -397,10 +405,7 @@ int file_restore(EDITFILE *file, char *backup_name) {
 	file->mods = 0;
 
 	/* Line offsets will be messed up */
-	free(file->lines);
-	file->lines = 0;
-	file->sizeof_lines = 0;
-	file->alloc_lines = 0;
+	forget_lines(file);
 
 	/* Read in each mod sequentially */
 	thismod = tmpmod.next = 0;
@@ -610,7 +615,10 @@ Extend:
 			loop = file->sizeof_lines + line_diff + 1;
 			if(loop > file->alloc_lines) {
 				loop += LINES_CHUNK;
-				if(!(ptr = realloc(file->lines, sizeof(file->lines[0]) * loop))) return -2;
+				if(!(ptr = realloc(file->lines, sizeof(file->lines[0]) * loop))) {
+					forget_lines(file);
+					return nbytes;
+				}
 				file->alloc_lines = loop;
 				file->lines = (off_t *)ptr;
 			}
@@ -692,14 +700,19 @@ Extend:
 				loop = file->sizeof_lines + 2;
 				if(loop > file->alloc_lines) {
 					loop += LINES_CHUNK;
-					if(!(ptr = realloc(file->lines, sizeof(file->lines[0]) * loop))) return -2;
-					file->alloc_lines = loop;
-					file->lines = (off_t *)ptr;
+					if((ptr = realloc(file->lines, sizeof(file->lines[0]) * loop))) {
+						file->alloc_lines = loop;
+						file->lines = (off_t *)ptr;
+					} else {
+						forget_lines(file);
+					}
 				}
 
-				memmove(file->lines + linenum + 1, file->lines + linenum, (file->sizeof_lines - linenum + 1) * sizeof(file->lines[0]));
-				file->lines[linenum] = offset + 1;
-				linenum++;
+				if(file->lines) {
+					memmove(file->lines + linenum + 1, file->lines + linenum, (file->sizeof_lines - linenum + 1) * sizeof(file->lines[0]));
+					file->lines[linenum] = offset + 1;
+					linenum++;
+				}
 			}
 			thismod->data[offset - diff - thismod->begin] = *buff++;
 			offset++;
