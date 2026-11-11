@@ -6,7 +6,6 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include "keys.h"
-#include "shared.h"
 
 /* the first int is the return value, the rest are what escape string will
  * match it.  Escape strings are ended with -1. */

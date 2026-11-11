@@ -52,7 +52,6 @@ to-do:
 #include <unistd.h>
 #include "editfile.h"
 #include "keys.h"
-#include "shared.h"
 
 #define MAX_COLS        1023    /* max number of columns on a terminal */
 #define PUFF_MAX_FILES    36    /* max number of files that we can open, including clipboard */
