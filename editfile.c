@@ -501,6 +501,7 @@ int file_write(EDITFILE *file, off_t offset, size_t nbytes, void *buf, int actio
 	int diff = 0;		/* difference between new file and old file */
 	off_t linenum = 0;
 	size_t bytes_left = nbytes;
+	unsigned char *buff = (unsigned char *)buf;
 
 	if(offset < 0) return 0;
 	if(action != FILE_INSERT && offset == file->size) return 0;
@@ -588,7 +589,7 @@ Extend:
 		/* make room for the new data */
 		memmove(pos + nbytes, pos, thismod->begin + diff + thismod->new_size - offset);
 		/* actually insert data */
-		memcpy(pos, buf, nbytes);
+		memcpy(pos, buff, nbytes);
 		thismod->new_size += nbytes;
 		file->size += nbytes;
 
@@ -599,7 +600,7 @@ Extend:
 			/* How many added newlines? */
 			loop = 0;
 			while(loop < nbytes)
-				if(((unsigned char *)buf)[loop++] == '\n') line_diff++;
+				if(buff[loop++] == '\n') line_diff++;
 			/* line_diff is the number of newlines added */
 
 			/* realloc file->lines */
@@ -619,7 +620,7 @@ Extend:
 			loop = 0;
 			while(line_diff) {
 				offset++;
-				if(((unsigned char *)buf)[loop] == '\n') {
+				if(buff[loop] == '\n') {
 					file->lines[linenum++] = offset;
 					line_diff--;
 				}
@@ -681,7 +682,7 @@ Extend:
 		}
 		if(action == FILE_CHANGE) {
 			int loop;
-			if(file->lines && *(unsigned char *)buf == '\n' && (file->lines[file->sizeof_lines] == -1
+			if(file->lines && *buff == '\n' && (file->lines[file->sizeof_lines] == -1
 					|| file->lines[file->sizeof_lines] > offset)) {
 				/* realloc file->lines */
 
@@ -697,9 +698,8 @@ Extend:
 				file->lines[linenum] = offset + 1;
 				linenum++;
 			}
-			thismod->data[offset - diff - thismod->begin] = *(unsigned char *)buf;
+			thismod->data[offset - diff - thismod->begin] = *buff++;
 			offset++;
-			{ long tmp = (long)buf; tmp++; buf = (typeof(buf))tmp; }  // increments buf.  *sigh* "use of cast expressions as lvalues is deprecated"
 		} else if(action == FILE_DELETE) {
 			memmove(thismod->data + offset - diff - thismod->begin, thismod->data + offset - diff - thismod->begin + 1, thismod->begin + diff + thismod->new_size - offset - 1);
 			thismod->new_size--;
