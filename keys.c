@@ -11,13 +11,13 @@
 #include "keys.h"
 
 /* the first int is the return value, the rest are what escape string will
- * match it.  Escape strings are ended with -1. */
+ * match it. Escape strings are ended with -1. */
 int keys[sizeof(keys) / sizeof(keys[0])][sizeof(keys[0]) / sizeof(keys[0][0])];
 int definedkeys = 0;
 
-/* Call after wgetch() returns ERR to tell whether the terminal is gone.  After
- * a timeout, stdin has nothing to read.  At EOF or on error (such as after a
- * hangup), stdin stays readable but wgetch() still returns ERR.  A key that
+/* Call after wgetch() returns ERR to tell whether the terminal is gone. After
+ * a timeout, stdin has nothing to read. At EOF or on error (such as after a
+ * hangup), stdin stays readable but wgetch() still returns ERR. A key that
  * arrives just after the timeout is pushed back with ungetch(). */
 int input_gone(WINDOW *win) {
 	fd_set readfds;
@@ -58,7 +58,7 @@ int kgetkey(WINDOW *win) {
 	return ERR;
 }
 
-/* returns the index of the first mismatch in the strings.  If they totally
+/* returns the index of the first mismatch in the strings. If they totally
  * match, it returns the index of the '\0'. */
 int strmatch(char *s1, char *s2) {
 	int index = 0;
@@ -111,12 +111,12 @@ void tab_file(char *string, int maxsize) {
 	return;
 }
 
-/* if validchars is NULL, it accepts 32-126.  If maxsize = 1, one character is
+/* if validchars is NULL, it accepts 32-126. If maxsize = 1, one character is
  * accepted and it does not wait for enter, and does not null-terminate.
  * Otherwise, it accepts maxsize-1 bytes from the user and null-terminates the
- * string.  Newline is never stored.  If validchars is "file", it enables the
+ * string. Newline is never stored. If validchars is "file", it enables the
  * tab key to finish typing partial filenames and accepts valid filename
- * characters.  The data stored in buf is used for the default entry, so it
+ * characters. The data stored in buf is used for the default entry, so it
  * should not be garbage. */
 int kgetstr(WINDOW *win, char *buf, size_t maxsize, char *validchars) {
 	int end, position, key, file = 0, number = 0, search = 0, beginpos, max_x, cur_y, searchlen = 0;

@@ -17,7 +17,7 @@ bugs:
 
 #define MOD_BLOCK_SIZE 16       /* Size multiplier of modifications stored in memory */
 #define BLOCK_SIZE 512          /* Block size for writing files...should really get this from stat() */
-#define LINES_CHUNK 10000       /* Allocation chunk-size (units = sizeof(off_t) bytes).  The slower realloc() is
+#define LINES_CHUNK 10000       /* Allocation chunk-size (units = sizeof(off_t) bytes). The slower realloc() is
                                  * on your system, the larger this should be for load time on large files. */
 
 #include <ctype.h>
@@ -42,7 +42,7 @@ typedef struct {		/* modification */
 } mod_t;
 
 /* Locks all of fd with type F_RDLCK or F_WRLCK, blocking for the lock if
- * flgs includes FILE_LOCKW.  Returns 0 on success.  Returns -1 and sets errno
+ * flgs includes FILE_LOCKW. Returns 0 on success. Returns -1 and sets errno
  * on failure, with errno == EAGAIN if another process holds a lock. */
 static int lock_fd(int fd, short type, int flgs) {
 	struct flock lock = { 0 };
@@ -72,7 +72,7 @@ static void free_mods(mod_t *mod) {
 	}
 }
 
-/* Discards the line offsets.  file_findline() rebuilds them as needed. */
+/* Discards the line offsets. file_findline() rebuilds them as needed. */
 static void forget_lines(EDITFILE *file) {
 	free(file->lines);
 	file->lines = 0;
@@ -525,7 +525,7 @@ int file_write(EDITFILE *file, off_t offset, size_t nbytes, void *buf, int actio
 	while(nextmod && nextmod->begin + diff + nextmod->new_size <= offset) {
 		/* If offset is right after a mod and there's no mod immediately
 		 * following, extend the mod so we don't waste a retarded amount
-		 * of space.  We are still functional without the following 4 lines,
+		 * of space. We are still functional without the following 4 lines,
 		 * just less memory efficient. */
 		if(offset == nextmod->begin + diff + nextmod->new_size) {
 			if(!nextmod->next) goto Extend;
@@ -577,7 +577,7 @@ Extend:
 	}
 	nextmod = (mod_t *)thismod->next;
 
-	/* thismod is now defined.  prevmod and nextmod may or may not be NULL */
+	/* thismod is now defined. prevmod and nextmod may or may not be NULL */
 
 	if(file->lines)
 		while(file->lines[linenum] != -1 && file->lines[linenum] <= offset)
@@ -650,9 +650,9 @@ Extend:
 	 * mod = index of the offset in thismod->data */
 	while(bytes_left && offset < file->size) {
 		if(offset >= thismod->begin + diff + thismod->new_size) {
-			/* we've gone outside the current mod-block.  We will either
+			/* we've gone outside the current mod-block. We will either
 			 * go to the next mod block if it immediately follows this one
-			 * or extend the current mod-block as necessary.  We need to
+			 * or extend the current mod-block as necessary. We need to
 			 * prevent overlapping mod-blocks. */
 			while(nextmod && offset >= nextmod->begin + diff + (thismod->new_size-thismod->old_size)) {
 				/* go on to next mod-block...there could be 0-byte blocks,
@@ -665,7 +665,7 @@ Extend:
 		}
 
 		if(thismod->new_size >= thismod->alloc_size) {
-			/* if alloc_size is too small.  Notice there will be at least one
+			/* if alloc_size is too small. Notice there will be at least one
 			 * free char */
 			void *ptr;
 			if(!(ptr = realloc(thismod->data, thismod->alloc_size + MOD_BLOCK_SIZE))) break;
@@ -675,7 +675,7 @@ Extend:
 
 		if(offset >= thismod->begin + diff + thismod->new_size) {
 			/* if this is still true, we had no block immediately following,
-			 * so we'll extend thismod by one character.  This won't happen
+			 * so we'll extend thismod by one character. This won't happen
 			 * with created files since mods always have something following
 			 * them, so the only way to extend a mod is with insert */
 			fseek(file->fp, thismod->begin + thismod->old_size, SEEK_SET);
