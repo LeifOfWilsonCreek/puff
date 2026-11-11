@@ -1,9 +1,11 @@
 #include <curses.h>
 #include <dirent.h>
+#include <errno.h>
 #include <limits.h>
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/select.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include "keys.h"
@@ -13,9 +15,27 @@
 int keys[sizeof(keys) / sizeof(keys[0])][sizeof(keys[0]) / sizeof(keys[0][0])];
 int definedkeys = 0;
 
+/* Call after wgetch() returns ERR to tell whether the terminal is gone.  After
+ * a timeout, stdin has nothing to read.  At EOF or on error (such as after a
+ * hangup), stdin stays readable but wgetch() still returns ERR.  A key that
+ * arrives just after the timeout is pushed back with ungetch(). */
+int input_gone(WINDOW *win) {
+	fd_set readfds;
+	struct timeval tv = { 0, 0 };
+	int ready, key;
+
+	FD_ZERO(&readfds);
+	FD_SET(STDIN_FILENO, &readfds);
+	ready = select(STDIN_FILENO + 1, &readfds, NULL, NULL, &tv);
+	if(ready == -1) return errno != EINTR;
+	if(ready == 0) return 0;
+	if((key = wgetch(win)) == ERR) return 1;
+	ungetch(key);
+	return 0;
+}
+
 int kgetkey(WINDOW *win) {
 	int thiskey[10], loop, match = 1, found = 1;
-	struct stat sb;
 
 	if((thiskey[match] = wgetch(win)) == ERR) return ERR;
 	if(thiskey[match] > 31 && thiskey[match] < 127) return thiskey[match];
@@ -29,7 +49,7 @@ int kgetkey(WINDOW *win) {
 		}
 		match++;
 		if(found) while((thiskey[match] = wgetch(win)) == ERR) {
-			if(fstat(STDIN_FILENO, &sb)) {
+			if(input_gone(win)) {
 				return ERR;
 			}
 		}
@@ -100,7 +120,6 @@ void tab_file(char *string, int maxsize) {
  * should not be garbage. */
 int kgetstr(WINDOW *win, char *buf, size_t maxsize, char *validchars) {
 	int end, position, key, file = 0, number = 0, search = 0, beginpos, max_x, cur_y, searchlen = 0;
-	struct stat sb;
 	char lastsearch[1024];
 
 	getmaxyx(win, cur_y, max_x);
@@ -136,7 +155,7 @@ int kgetstr(WINDOW *win, char *buf, size_t maxsize, char *validchars) {
 		wmove(win, cur_y, beginpos + position);
 		wrefresh(win);
 		while((key = kgetkey(win)) == ERR) {
-			if(fstat(STDIN_FILENO, &sb)) {
+			if(input_gone(win)) {
 				return ERR;
 			}
 		}
@@ -144,8 +163,8 @@ int kgetstr(WINDOW *win, char *buf, size_t maxsize, char *validchars) {
 				|| (!validchars && !number && key >= 32 && key <= 126)
 				|| (number && key >= '0' && key <= '9')
 /* hex codes */	|| (number && position == 1 && buf[0] == '0' && (key == 'x' || key == 'X'))
-		 		|| (number && position > 1 && buf[0] == '0' && (buf[1] == 'x' || buf[1] == 'X') && key >= 'a' && key <= 'f')
-		 		|| (number && position > 1 && buf[0] == '0' && (buf[1] == 'x' || buf[1] == 'X') && key >= 'A' && key <= 'F')
+				|| (number && position > 1 && buf[0] == '0' && (buf[1] == 'x' || buf[1] == 'X') && key >= 'a' && key <= 'f')
+				|| (number && position > 1 && buf[0] == '0' && (buf[1] == 'x' || buf[1] == 'X') && key >= 'A' && key <= 'F')
 			) {
 			if(end < maxsize - 1) {
 				memmove(buf + position + 1, buf + position, end - position + 1);

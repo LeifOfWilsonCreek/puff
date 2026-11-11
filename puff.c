@@ -1893,7 +1893,6 @@ int keyswitch() {
 
 int keyfilemenu() {
 	int topfile = 0, maxy, maxx, tmpint, key;
-	struct stat sb;
 	char permstr[32];
 
 	if(!(messagewin = newwin(LINES - 1, COLS, 0, 0))) {
@@ -1952,8 +1951,7 @@ int keyfilemenu() {
 		redraw_statuswin("^N=New, ^O=Open, ^C=Close, ^S=Save, ^A=More, 0-9, A-Z=Switch:  ");
 		wclrtoeol(statuswin);
 		while((key = wgetch(statuswin)) == ERR) {
-// This isn't right!
-			if(fstat(STDIN_FILENO, &sb)) {
+			if(input_gone(statuswin)) {
 				werase(messagewin);
 				wnoutrefresh(messagewin);
 				delwin(messagewin);
@@ -2098,7 +2096,6 @@ int keyclearclip() {
 int main(int Argc, char **Argv) {
 	int key, tmpint;
 	char tmpstr[MAX_COLS+1];
-	struct stat sb;
 
 	argc = Argc;
 	argv = Argv;
@@ -2275,9 +2272,8 @@ int main(int Argc, char **Argv) {
 		if(curfile != -1) {redrawwin(WIN); wnoutrefresh(WIN);}
 		doupdate();
 
-// This isn't right!
 		while((key = kgetkey(statuswin)) == ERR) {
-			if(fstat(STDIN_FILENO, &sb))
+			if(input_gone(statuswin))
 				raise(SIGTERM);
 		}
 

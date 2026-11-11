@@ -49,6 +49,7 @@
 
 extern int keys[1024][10], definedkeys;
 
+int input_gone(WINDOW *win);
 int strmatch(char *s1, char *s2);
 void tab_file(char *string, int maxsize);
 int kgetkey(WINDOW *win);
