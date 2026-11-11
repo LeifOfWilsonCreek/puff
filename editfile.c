@@ -178,10 +178,9 @@ int file_save(EDITFILE *file) {
 		else return -1;
 	}
 	if(!(read_buf2 = (unsigned char *)malloc(buf_size))) {
+		free(read_buf1);
 		if(ftruncate(fileno(file->fp), file->fp_stat.st_size)) return -2;
 		else return -1;
-		free(read_buf1);
-		return -1;
 	}
 
 	/* Actually write out the data - stay a buffer ahead so no writes overlap
