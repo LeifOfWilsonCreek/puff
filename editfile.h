@@ -74,10 +74,10 @@ int file_save(EDITFILE *file);
  *   a file.
  * This preserves line-offset information, and so is faster than saving,
  *   closing, and reopening if you're using line offsets.
- * Returns 0 on success.  Returns -1 on write error.  This will never corrupt
- *   the file.  If -1 is returned, the old file remains open with the
- *   modifications in memory and a partial file may have been written and should
- *   probably be unlink()'d.  If(flags&FILE_KEEPOLD), this will not disrupt an
+ * Returns 0 on success.  Returns -1 and sets errno on failure.  This will
+ *   never corrupt the file.  If -1 is returned, the old file remains open with
+ *   the modifications in memory and a partial file may have been written and
+ *   should probably be unlink()'d.  If(flags&FILE_KEEPOLD), this will not disrupt an
  *   existing lock, otherwise, it will only release a lock if successful (since
  *   success requires closing the old file).
  * This can be used for safe writes in place of file_save().  If you are
@@ -89,7 +89,8 @@ int file_saveas(EDITFILE *file, char *new_filename, int flags, mode_t mode);
 #define FILE_MODE666     (S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH)
 
 /* Writes a backup of the changes to a file as fast as possible - good if your
- * program is TERM'd or for timed backups or the like.  Returns 0 on success. */
+ * program is TERM'd or for timed backups or the like.  Returns 0 on success, or
+ * -1 and sets errno on failure. */
 int file_backup(EDITFILE *file, char *backup_name);
 
 /* Abandons any changes made to file and restores the changes from the backup

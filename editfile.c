@@ -260,7 +260,7 @@ int file_save(EDITFILE *file) {
 }
 
 int file_saveas(EDITFILE *file, char *new_filename, int flgs, mode_t mode) {
-	int tmpfd;
+	int tmpfd, saved_errno;
 	FILE *out_fp;
 	off_t offset, read_size;
 	struct stat write_stat;
@@ -302,30 +302,20 @@ int file_saveas(EDITFILE *file, char *new_filename, int flgs, mode_t mode) {
 		return -1;
 	}
 
-	if((flgs&FILE_LOCK) && lock_fd(tmpfd, F_WRLCK, flgs)) {
-		int saved_errno = errno;
+	if(((flgs&FILE_LOCK) && lock_fd(tmpfd, F_WRLCK, flgs))
+			|| ftruncate(tmpfd, 0) || !(out_fp = fdopen(tmpfd, "rb+"))) {
+		saved_errno = errno;
 		close(tmpfd);
 		errno = saved_errno;
-		return -1;
-	}
-
-	if(ftruncate(tmpfd, 0) || !(out_fp = fdopen(tmpfd, "rb+"))) {
-		close(tmpfd);
 		return -1;
 	}
 
 	offset = 0;
 	while((read_size = file_read(file, offset, sizeof(buf), buf))) {
 		offset += read_size;
-		if((signed)fwrite(buf, 1, read_size, out_fp) < read_size) {
-			fclose(out_fp);
-			return -1;
-		}
+		if((signed)fwrite(buf, 1, read_size, out_fp) < read_size) goto fail;
 	}
-	if(fflush(out_fp) == EOF || offset != file->size) {
-		fclose(out_fp);
-		return -1;
-	}
+	if(fflush(out_fp) == EOF || offset != file->size) goto fail;
 
 	if(flgs&FILE_KEEPOLD) {
 		fclose(out_fp);
@@ -349,30 +339,47 @@ int file_saveas(EDITFILE *file, char *new_filename, int flgs, mode_t mode) {
 	}
 
 	return 0;
+
+fail:
+	saved_errno = errno;
+	fclose(out_fp);
+	errno = saved_errno;
+	return -1;
 }
 
 int file_backup(EDITFILE *file, char *backup_name) {
 	FILE *fp;
 	mod_t *thismod;
-	int fd;
+	int fd, saved_errno;
 
 	if((fd = open(backup_name, O_WRONLY|O_CREAT|O_TRUNC, S_IRUSR|S_IWUSR)) == -1) return -1;
-	if(!(fp = fdopen(fd, "w"))) { close(fd); return -1; }
+	if(!(fp = fdopen(fd, "w"))) {
+		saved_errno = errno;
+		close(fd);
+		errno = saved_errno;
+		return -1;
+	}
 	fchmod(fd, S_IRUSR|S_IWUSR);  /* In case it already existed */
-	if(fputs("EDITFILE backup v1.0\n", fp) == EOF) { fclose(fp); return -1; }
+	if(fputs("EDITFILE backup v1.0\n", fp) == EOF) goto fail;
 
 	/* Write out each mod sequentially */
 	thismod = (mod_t *)file->mods;
 	while(thismod) {
-		if(fwrite(&thismod->begin, sizeof(thismod->begin), 1, fp) != 1) { fclose(fp); return -1; }
-		if(fwrite(&thismod->old_size, sizeof(thismod->old_size), 1, fp) != 1) { fclose(fp); return -1; }
-		if(fwrite(&thismod->new_size, sizeof(thismod->new_size), 1, fp) != 1) { fclose(fp); return -1; }
-		if(thismod->new_size && fwrite(thismod->data, thismod->new_size, 1, fp) != 1) { fclose(fp); return -1; }
+		if(fwrite(&thismod->begin, sizeof(thismod->begin), 1, fp) != 1) goto fail;
+		if(fwrite(&thismod->old_size, sizeof(thismod->old_size), 1, fp) != 1) goto fail;
+		if(fwrite(&thismod->new_size, sizeof(thismod->new_size), 1, fp) != 1) goto fail;
+		if(thismod->new_size && fwrite(thismod->data, thismod->new_size, 1, fp) != 1) goto fail;
 		thismod = (mod_t *)thismod->next;
 	}
 	if(fclose(fp) == EOF) return -1;
 
 	return 0;
+
+fail:
+	saved_errno = errno;
+	fclose(fp);
+	errno = saved_errno;
+	return -1;
 }
 
 int file_restore(EDITFILE *file, char *backup_name) {

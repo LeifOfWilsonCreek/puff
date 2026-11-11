@@ -1030,16 +1030,16 @@ int configure() {
 	return OK;
 }
 
-/* Writes the clipboard to ~/.puff.clipboard if save_clipboard is set, or
- * removes that file if the clipboard is empty. */
+/* Writes the clipboard to a new ~/.puff.clipboard if save_clipboard is set,
+ * replacing any existing file even if it isn't writable.  An empty clipboard
+ * leaves no file. */
 void store_clipboard() {
 	char filename[PATH_MAX];
 
 	if(!save_clipboard || snprintf(filename, sizeof(filename), "%s/.puff.clipboard", homedir) >= sizeof(filename)) return;
+	unlink(filename);
 	if(file_size(finfo[0].fp)) {
-		file_saveas(finfo[0].fp, filename, (lock_files?FILE_LOCK:0)|FILE_ALLOWOVERWRITE, S_IRUSR|S_IWUSR);
-	} else {
-		unlink(filename);
+		file_saveas(finfo[0].fp, filename, lock_files?FILE_LOCK:0, S_IRUSR|S_IWUSR);
 	}
 }
 
@@ -1067,29 +1067,6 @@ next_signal:
 		char filename[PATH_MAX];
 		struct stat sb;
 
-		tmpint2 = -1;
-		for(tmpint = 1; tmpint < PUFF_MAX_FILES; tmpint++) {
-			if(finfo[tmpint].fp && finfo[tmpint].modified) {
-				if(finfo[tmpint].name[0]) {
-					if(snprintf(filename, sizeof(filename), "%s.changes", finfo[tmpint].name) >= sizeof(filename)) continue;
-					file_backup(finfo[tmpint].fp, filename);
-					continue;
-				} else {
-					while(++tmpint2 < 1000) {
-						if(snprintf(filename, sizeof(filename), "%s/.puff.bak.%i", homedir, tmpint2) >= sizeof(filename)) break;
-						if(stat(filename, &sb)) {
-							/* Don't overwrite existing files */
-							if(errno == ENOENT) {
-								file_saveas(finfo[tmpint].fp, filename, 0, S_IRUSR|S_IWUSR);
-							}
-							break;
-						}
-					}
-				}
-			}
-		}
-		store_clipboard();
-
 		endwin();
 		if(sig == SIGINT) {
 			printf("Interrupted.\n");
@@ -1100,6 +1077,35 @@ next_signal:
 		} else if(sig == SIGXFSZ) {
 			printf("File size limit exceeded.\n");
 		}
+
+		tmpint2 = -1;
+		for(tmpint = 1; tmpint < PUFF_MAX_FILES; tmpint++) {
+			if(finfo[tmpint].fp && finfo[tmpint].modified) {
+				if(finfo[tmpint].name[0]) {
+					if(snprintf(filename, sizeof(filename), "%s.changes", finfo[tmpint].name) >= sizeof(filename)) continue;
+					if(file_backup(finfo[tmpint].fp, filename)) {
+						printf("Couldn't save changes to %s:  %s\n", filename, strerror(errno));
+					} else {
+						printf("Saved changes to %s\n", filename);
+					}
+					continue;
+				} else {
+					while(++tmpint2 < 1000) {
+						if(snprintf(filename, sizeof(filename), "%s/.puff.bak.%i", homedir, tmpint2) >= sizeof(filename)) break;
+						if(stat(filename, &sb)) {
+							/* Don't overwrite existing files */
+							if(errno != ENOENT || file_saveas(finfo[tmpint].fp, filename, 0, S_IRUSR|S_IWUSR)) {
+								printf("Couldn't save unnamed file to %s:  %s\n", filename, strerror(errno));
+							} else {
+								printf("Saved unnamed file to %s\n", filename);
+							}
+							break;
+						}
+					}
+				}
+			}
+		}
+		store_clipboard();
 		exit(1);
 #ifndef __sun__   /* SunOS appears to be missing resizeterm() and wresize(). */
 	} else if(sig == SIGWINCH) {
