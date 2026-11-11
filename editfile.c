@@ -284,7 +284,7 @@ int file_saveas(EDITFILE *file, char *new_filename, int flgs, mode_t mode) {
 			errno = EISDIR;
 		else
 			errno = EINVAL;
-		return 0;
+		return -1;
 	}
 
 	if(flgs&FILE_LOCK) {
