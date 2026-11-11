@@ -94,7 +94,10 @@ int file_backup(EDITFILE *file, char *backup_name);
 
 /* Abandons any changes made to file and restores the changes from the backup
  * file specified.  This can cause very strange things if the original file has
- * been modified since the last backup or if the backup wasn't for that file. */
+ * been modified since the last backup or if the backup wasn't for that file.
+ * Returns 0 on success.  On failure, returns -1 and sets errno.  The file keeps
+ * its existing changes if the backup can't be opened or has a bad header, and
+ * is left with no changes if the backup fails partway through. */
 int file_restore(EDITFILE *file, char *backup_name);
 
 /* Closes the file, and thereby releasing any file locks, and frees all
@@ -160,8 +163,9 @@ int file_numlines(EDITFILE *file);
 int file_findoff(EDITFILE *file, off_t offset);
 
 /* Search file for thingy, with length size, starting at begin, ending at end.
- * Returns -1 on not-found, or the offset of the beginning of the matching
- * string.  If flags&FILE_NOCASE, use a case insensitive search. */
+ * Returns -1 on not-found, -2 and sets errno if memory can't be allocated, or
+ * the offset of the beginning of the matching string.  If flags&FILE_NOCASE,
+ * use a case insensitive search. */
 #define FILE_NOCASE 1
 #define FILE_SMARTCASE 2
 off_t file_search(EDITFILE *file, void *thingy, size_t size, off_t begin, off_t end, int flags);

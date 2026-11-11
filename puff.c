@@ -1576,12 +1576,18 @@ int keysearchnext() {
 	tmpint = strlen(old_search.text);
 	tmpoff = file_search(FP, old_search.text, tmpint, OFFSET + 1, file_size(FP),
 		old_search.sensitive == 'S' ? FILE_SMARTCASE : old_search.sensitive == 'N' ? FILE_NOCASE : 0);
-	redraw_statuswin("file");
-	if(tmpoff == -1) {
+	if(tmpoff >= 0) {
+		redraw_statuswin("file");
+	} else if(tmpoff == -1) {
 		redraw_statuswin("Search wrapped...");
 		tmpoff = file_search(FP, old_search.text, tmpint, 0, OFFSET + tmpint,
 			old_search.sensitive == 'S' ? FILE_SMARTCASE : old_search.sensitive == 'N' ? FILE_NOCASE : 0);
-		if(tmpoff != -1) redraw_statuswin("Search wrapped");
+		if(tmpoff >= 0) redraw_statuswin("Search wrapped");
+	}
+	if(tmpoff == -2) {
+		/* Checked before any redraw_statuswin() so errno is intact */
+		redraw_statuswin("Search failed:  %s", strerror(errno));
+		return ERR;
 	}
 	if(tmpoff == -1) {
 		redraw_statuswin("Not found");
@@ -2070,6 +2076,10 @@ int keypaste() {
 	if(curfile == -1) return ERR;
 	if(curfile == 0) {
 		redraw_statuswin("Don't paste on the clipboard.");
+		return ERR;
+	}
+	if(!file_size(finfo[0].fp)) {
+		redraw_statuswin("Clipboard is empty.");
 		return ERR;
 	}
 	if(!(ptr = malloc(file_size(finfo[0].fp)))) {

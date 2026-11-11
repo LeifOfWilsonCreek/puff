@@ -113,9 +113,9 @@ EDITFILE *file_open(char *filename, int flgs, mode_t mode) {
 
 	/* Obtain a lock if necessary */
 	if((flgs&FILE_LOCK) && lock_fd(tmpfd, ((flgs&O_ACCMODE) == O_RDWR)?F_WRLCK:F_RDLCK, flgs)) {
-		int lock_errno = errno;
+		int saved_errno = errno;
 		close(tmpfd);
-		errno = lock_errno;
+		errno = saved_errno;
 		return 0;
 	}
 
@@ -303,9 +303,9 @@ int file_saveas(EDITFILE *file, char *new_filename, int flgs, mode_t mode) {
 	}
 
 	if((flgs&FILE_LOCK) && lock_fd(tmpfd, F_WRLCK, flgs)) {
-		int lock_errno = errno;
+		int saved_errno = errno;
 		close(tmpfd);
-		errno = lock_errno;
+		errno = saved_errno;
 		return -1;
 	}
 
@@ -367,7 +367,7 @@ int file_backup(EDITFILE *file, char *backup_name) {
 		if(fwrite(&thismod->begin, sizeof(thismod->begin), 1, fp) != 1) { fclose(fp); return -1; }
 		if(fwrite(&thismod->old_size, sizeof(thismod->old_size), 1, fp) != 1) { fclose(fp); return -1; }
 		if(fwrite(&thismod->new_size, sizeof(thismod->new_size), 1, fp) != 1) { fclose(fp); return -1; }
-		if(fwrite(thismod->data, thismod->new_size, 1, fp) != 1) { fclose(fp); return -1; }
+		if(thismod->new_size && fwrite(thismod->data, thismod->new_size, 1, fp) != 1) { fclose(fp); return -1; }
 		thismod = (mod_t *)thismod->next;
 	}
 	if(fclose(fp) == EOF) return -1;
@@ -379,7 +379,7 @@ int file_restore(EDITFILE *file, char *backup_name) {
 	FILE *fp;
 	mod_t *lastmod, *thismod, tmpmod;
 	char buf[32];
-	int diff;
+	int diff, saved_errno;
 
 	/* Open file / Check validity */
 	if(!(fp = fopen(backup_name, "r"))) return -1;
@@ -399,32 +399,41 @@ int file_restore(EDITFILE *file, char *backup_name) {
 	thismod = tmpmod.next = 0;
 	diff = 0;
 	while(1) {
-#define PANIC if(feof(fp)) errno = EINVAL; fclose(fp); return -1;
+#define PANIC if(feof(fp)) errno = EINVAL; goto fail;
+#define INVALID errno = EINVAL; goto fail;
 		if(fread(&tmpmod.begin, sizeof(tmpmod.begin), 1, fp) != 1)          { break; }
 		if(fread(&tmpmod.old_size, sizeof(tmpmod.old_size), 1, fp) != 1)    { PANIC }
-		if(tmpmod.begin + tmpmod.old_size > file->fp_stat.st_size)          { PANIC }
+		if(tmpmod.begin + tmpmod.old_size > file->fp_stat.st_size)          { INVALID }
 		if(fread(&tmpmod.new_size, sizeof(tmpmod.new_size), 1, fp) != 1)    { PANIC }
-		if(tmpmod.begin < 0 || tmpmod.old_size < 0 || tmpmod.new_size < 0)  { PANIC }
+		if(tmpmod.begin < 0 || tmpmod.old_size < 0 || tmpmod.new_size < 0)  { INVALID }
 		tmpmod.alloc_size = tmpmod.new_size + MOD_BLOCK_SIZE - tmpmod.new_size % MOD_BLOCK_SIZE;
-		if(!(tmpmod.data = (unsigned char *)malloc(tmpmod.alloc_size)))     { PANIC }
-		if(fread(tmpmod.data, tmpmod.new_size, 1, fp) != 1)                 { free(tmpmod.data); PANIC }
+		if(!(tmpmod.data = (unsigned char *)malloc(tmpmod.alloc_size)))     { goto fail; }
+		if(tmpmod.new_size && fread(tmpmod.data, tmpmod.new_size, 1, fp) != 1) { free(tmpmod.data); PANIC }
 		diff += tmpmod.new_size - tmpmod.old_size;
 
 		lastmod = thismod;
-		if(!(thismod = (mod_t *)malloc(sizeof(mod_t))))                     { free(tmpmod.data); PANIC }
+		if(!(thismod = (mod_t *)malloc(sizeof(mod_t))))                     { free(tmpmod.data); goto fail; }
 		*thismod = tmpmod;
 		if(lastmod) lastmod->next = thismod; else file->mods = thismod;
 #undef PANIC
+#undef INVALID
 	}
 
-	file->size = file->fp_stat.st_size + diff;
 	if(feof(fp)) {
 		fclose(fp);
+		file->size = file->fp_stat.st_size + diff;
 		return 0;
-	} else {
-		fclose(fp);
-		return -1;
 	}
+
+fail:
+	/* Leave the file unmodified rather than partially restored */
+	saved_errno = errno;
+	fclose(fp);
+	free_mods((mod_t *)file->mods);
+	file->mods = 0;
+	file->size = file->fp_stat.st_size;
+	errno = saved_errno;
+	return -1;
 }
 
 void file_close(EDITFILE *file) {
@@ -485,6 +494,7 @@ int file_write(EDITFILE *file, off_t offset, size_t nbytes, void *buf, int actio
 	void *ptr;
 	mod_t *nextmod, *thismod, *prevmod = 0;
 	int diff = 0;		/* difference between new file and old file */
+	int nbytes_done;
 	off_t linenum = 0;
 	size_t bytes_left = nbytes;
 	unsigned char *buff = (unsigned char *)buf;
@@ -695,17 +705,18 @@ Extend:
 		bytes_left--;
 	}
 
-	diff = nbytes - bytes_left;
+	nbytes_done = nbytes - bytes_left;
 	if(file->lines && action == FILE_DELETE) {
 		while(linenum <= file->sizeof_lines && file->lines[linenum] != -1)
-			file->lines[linenum++] -= diff;
+			file->lines[linenum++] -= nbytes_done;
 	}
 
-	return diff;
+	return nbytes_done;
 }
 
 off_t file_truncate(EDITFILE *file, off_t new_size) {
 	int diff = 0;
+	off_t truncated;
 	mod_t *lastmod = 0, *thismod;
 	void *ptr;
 
@@ -771,9 +782,9 @@ off_t file_truncate(EDITFILE *file, off_t new_size) {
 		}
 	}
 
-	diff = new_size - file->size;
+	truncated = file->size - new_size;
 	file->size = new_size;
-	return diff;
+	return truncated;
 }
 
 off_t file_findline(EDITFILE *file, int linenum) {
@@ -856,7 +867,7 @@ off_t file_search(EDITFILE *file, void *thingy, size_t size, off_t begin, off_t 
 	end -= size;
 	if(end < begin || !size) return -1;
 
-	buf = (char *)malloc(size);
+	if(!(buf = (char *)malloc(size))) return -2;
 	if(flags & FILE_NOCASE) {
 		if(file_read(file, begin, size, buf) < (signed)size) { free(buf); return -1; }
 		while(begin <= end) {
