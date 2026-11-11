@@ -1022,6 +1022,19 @@ int configure() {
 	return OK;
 }
 
+/* Writes the clipboard to ~/.puff.clipboard if save_clipboard is set, or
+ * removes that file if the clipboard is empty. */
+void store_clipboard() {
+	char filename[PATH_MAX];
+
+	if(!save_clipboard || snprintf(filename, sizeof(filename), "%s/.puff.clipboard", homedir) >= sizeof(filename)) return;
+	if(file_size(finfo[0].fp)) {
+		file_saveas(finfo[0].fp, filename, (lock_files?FILE_LOCK:0)|FILE_ALLOWOVERWRITE, S_IRUSR|S_IWUSR);
+	} else {
+		unlink(filename);
+	}
+}
+
 void sigs(int sig) {
 	volatile static int raisedsignal = 0, nextsignal = 0;
 
@@ -1067,9 +1080,7 @@ next_signal:
 				}
 			}
 		}
-		if(save_clipboard && snprintf(filename, sizeof(filename), "%s/.puff.clipboard", homedir) < sizeof(filename)) {
-			file_saveas(finfo[0].fp, filename, (lock_files?FILE_LOCK:0)|FILE_ALLOWOVERWRITE, S_IRUSR|S_IWUSR);
-		}
+		store_clipboard();
 
 		endwin();
 		if(sig == SIGINT) {
@@ -1844,9 +1855,7 @@ int keyexit() {
 		}
 	}
 	curfile = 0;
-	if(save_clipboard) {
-		file_save(FP);
-	}
+	store_clipboard();
 	file_close(FP);
 	werase(statuswin);
 	wrefresh(statuswin);
