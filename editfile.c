@@ -41,6 +41,18 @@ typedef struct {		/* modification */
 	unsigned char *data;
 } mod_t;
 
+/* Frees mod and every mod following it */
+static void free_mods(mod_t *mod) {
+	mod_t *nextmod;
+
+	while(mod) {
+		nextmod = (mod_t *)mod->next;
+		free(mod->data);
+		free(mod);
+		mod = nextmod;
+	}
+}
+
 EDITFILE *file_new() {
 	EDITFILE *file;
 	file = (EDITFILE *)calloc(1, sizeof(EDITFILE));
@@ -127,7 +139,7 @@ EDITFILE *file_open(char *filename, int flgs, mode_t mode) {
 int file_save(EDITFILE *file) {
 	off_t readoffset, writeoffset;
 	int length, buf_size;
-	mod_t *thismod, *nextmod;
+	mod_t *thismod;
 	unsigned char *read_buf1, *read_buf2, *tmp;
 
 	if((file->flags&O_ACCMODE) != O_RDWR) {
@@ -224,14 +236,7 @@ int file_save(EDITFILE *file) {
 	if(readoffset != file->size || writeoffset != file->size) return -2;
 	if(ftruncate(fileno(file->fp), file->size)) return -2;
 
-	/* free mods */
-	thismod = (mod_t *)file->mods;
-	while(thismod) {
-		nextmod = (mod_t *)thismod->next;
-		free(thismod->data);
-		free(thismod);
-		thismod = (mod_t *)nextmod;
-	}
+	free_mods((mod_t *)file->mods);
 	file->mods = 0;
 
 	if(fstat(fileno(file->fp), &file->fp_stat)) {
@@ -245,7 +250,6 @@ int file_save(EDITFILE *file) {
 int file_saveas(EDITFILE *file, char *new_filename, int flgs, mode_t mode) {
 	int tmpfd;
 	FILE *out_fp;
-	mod_t *thismod, *nextmod;
 	off_t offset, read_size;
 	struct stat write_stat;
 	struct flock lock;
@@ -323,14 +327,7 @@ int file_saveas(EDITFILE *file, char *new_filename, int flgs, mode_t mode) {
 		return 0;
 	}
 
-	/* free mods */
-	thismod = (mod_t *)file->mods;
-	while(thismod) {
-		nextmod = (mod_t *)thismod->next;
-		free(thismod->data);
-		free(thismod);
-		thismod = (mod_t *)nextmod;
-	}
+	free_mods((mod_t *)file->mods);
 	file->mods = 0;
 
 	/* close old file, keep new file */
@@ -382,14 +379,7 @@ int file_restore(EDITFILE *file, char *backup_name) {
 	if(!fgets(buf, sizeof(buf), fp)) { fclose(fp); errno = EINVAL; return -1; }
 	if(strcmp(buf, "EDITFILE backup v1.0\n")) { fclose(fp); errno = EINVAL; return -1; }
 
-	/* Free modifications */
-	thismod = (mod_t *)file->mods;
-	while(thismod) {
-		lastmod = (mod_t *)thismod->next;
-		free(thismod->data);
-		free(thismod);
-		thismod = lastmod;
-	}
+	free_mods((mod_t *)file->mods);
 	file->mods = 0;
 
 	/* Line offsets will be messed up */
@@ -431,19 +421,9 @@ int file_restore(EDITFILE *file, char *backup_name) {
 }
 
 void file_close(EDITFILE *file) {
-	mod_t *mod, *nextmod;
 	if(file->fp) fclose(file->fp);
 	free(file->lines);
-
-	/* free modifications */
-	mod = (mod_t *)file->mods;
-	while(mod) {
-		nextmod = (mod_t *)mod->next;
-		free(mod->data);
-		free(mod);
-		mod = nextmod;
-	}
-
+	free_mods((mod_t *)file->mods);
 	free(file);
 	return;
 }
@@ -719,7 +699,7 @@ Extend:
 
 off_t file_truncate(EDITFILE *file, off_t new_size) {
 	int diff = 0;
-	mod_t *lastmod = 0, *thismod, *nextmod;
+	mod_t *lastmod = 0, *thismod;
 	void *ptr;
 
 	if(!file) {
@@ -743,28 +723,18 @@ off_t file_truncate(EDITFILE *file, off_t new_size) {
 		/* Truncate inside thismod */
 		thismod->old_size = file->fp_stat.st_size - thismod->begin;
 		thismod->new_size = new_size - thismod->begin - diff;
-		thismod->alloc_size = file->size + MOD_BLOCK_SIZE - file->size % MOD_BLOCK_SIZE;
+		thismod->alloc_size = thismod->new_size + MOD_BLOCK_SIZE - thismod->new_size % MOD_BLOCK_SIZE;
 
 		/* Doesn't matter much if it fails since it's getting smaller */
 		ptr = realloc(thismod->data, thismod->alloc_size);
 		if(ptr) thismod->data = (unsigned char *)ptr;
 
-		lastmod = thismod;
-		thismod = (mod_t *)thismod->next;
-		lastmod->next = 0;
 		/* Free all the mods following this one */
-		while(thismod) {
-			nextmod = (mod_t *)thismod->next;
-			free(thismod);
-			thismod = nextmod;
-		}
+		free_mods((mod_t *)thismod->next);
+		thismod->next = 0;
 	} else {
 		/* No mod-block exists here - thismod is past the new end */
-		while(thismod) {
-			nextmod = (mod_t *)thismod->next;
-			free(thismod);
-			thismod = nextmod;
-		}
+		free_mods(thismod);
 
 		if(lastmod) {
 			lastmod->next = 0;
