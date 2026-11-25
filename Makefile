@@ -1,17 +1,19 @@
+.PHONY: all install uninstall clean
+
 PREFIX ?= /usr/local
-CFLAGS += -Wall -O3
-#CFLAGS += -DDEBUG -g
+CFLAGS ?= -O3
+CFLAGS += -Wall
 OBJS = editfile.o keys.o puff.o
 HEAD = editfile.h keys.h
-LIBS = -lcurses
+LIBS = $(LDFLAGS) -lcurses
 
 all: puff
 install: all
-	install -m 0755 puff $(PREFIX)/bin
-	mkdir -p $(PREFIX)/etc || echo -n
-	install -m 0644 puff.conf $(PREFIX)/etc/puff.conf.sample
+	mkdir -p $(DESTDIR)$(PREFIX)/bin $(DESTDIR)$(PREFIX)/etc
+	install -s -m 0755 puff $(DESTDIR)$(PREFIX)/bin
+	install -m 0644 puff.conf $(DESTDIR)$(PREFIX)/etc/puff.conf.sample
 uninstall:
-	rm -f $(PREFIX)/bin/puff $(PREFIX)/etc/puff.conf
+	rm -f $(DESTDIR)$(PREFIX)/bin/puff $(DESTDIR)$(PREFIX)/etc/puff.conf.sample
 clean:
 	rm -f $(OBJS) puff.core core puff testedit.o testedit.core testedit
 
