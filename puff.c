@@ -177,7 +177,7 @@ void redraw_statuswin(char *fmt, ...) {
 	}
 
 	va_start(args, fmt);
-	vwprintw(statuswin, fmt, args);
+	vw_printw(statuswin, fmt, args);
 	va_end(args);
 
 	redrawwin(statuswin);
